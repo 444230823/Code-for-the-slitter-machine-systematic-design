@@ -1,2 +1,0 @@
-pyuic5 -x NewUI.ui -o testUI.py
-D:\PythonWorks\ven_v311\Scripts\pyinstaller -F no2sm2(f03)_2.py
