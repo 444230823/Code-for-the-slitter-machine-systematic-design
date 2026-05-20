@@ -1,0 +1,938 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.1//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_2.dtd'>
+<nta>
+	<declaration>// Place global declarations here.
+clock t1,t2,t3;//t3 is for camera thread，t2 is for PLC thread；t3 is for Servo Motor thread；
+chan SendOut,InitStack,PS,P,PlcAutoConnect,TensionButton,SpeedStop,Dock,UpdateCameraCode;
+chan JudgeCorrection,SpeedUp,SpeedDown,StopDone,ProgramQuit,ReadPLCdata,UpdateModel,DefectProcessWindowShow;
+chan AllowDefectStopButton,SendDefectInfo,DecisionDefectNumbers,ReadModel,AllreadyExistModel;
+chan NonexistModel,SaveDefectModel,CreateModel,LoadModel,UpdateDefectInfo,CalStopPosition;
+int TensionSwitch,SpeedState,CameraConnectError,PLCAutoConnect,PLCconnectError,DealDoneFlag,DecisionDefectNumber;
+int DisplayProcessDefectsWindow,AllowDefectStop=0,AllDefectDone=0,DockCount,DockCountLast,LenDefectInfo;
+int ActualSpeed,State,ServoMode;
+int Turn;
+const int id=5,observation=2,max_dis=9999,idd=6;
+int min_distance=99,StackNum=0;
+int dis[id][observation]={{1358,1},{1204,2},{1231,2},{1026,1},{1123,2}};
+int diss[idd]={0,0,0,0,0,0};
+</declaration>
+	<template>
+		<name>StackCommand</name>
+		<declaration>int i=1,j=2;
+const int id=1;
+int diss[id]={1};</declaration>
+		<location id="id0" x="-824" y="-374">
+			<name x="-834" y="-408">Start</name>
+		</location>
+		<location id="id1" x="-543" y="-374">
+			<name x="-594" y="-408">UpdateStack</name>
+		</location>
+		<location id="id2" x="-544" y="-306">
+			<name x="-579" y="-289">Determine</name>
+			<committed/>
+		</location>
+		<location id="id3" x="-544" y="-204">
+			<name x="-553" y="-195">Out</name>
+		</location>
+		<location id="id4" x="-833" y="-204">
+			<name x="-859" y="-187">Out_Temp</name>
+			<committed/>
+		</location>
+		<init ref="id0"/>
+		<transition>
+			<source ref="id4"/>
+			<target ref="id1"/>
+			<label kind="synchronisation" x="-756" y="-331">SendOut!</label>
+			<label kind="assignment" x="-850" y="-306">i:=1,j:=2</label>
+			<nail x="-782" y="-323"/>
+		</transition>
+		<transition>
+			<source ref="id3"/>
+			<target ref="id4"/>
+			<label kind="assignment" x="-748" y="-204">dis[i][1]:=max_dis</label>
+		</transition>
+		<transition>
+			<source ref="id2"/>
+			<target ref="id3"/>
+			<label kind="guard" x="-654" y="-272">dis[i][1]&lt;dis[j][1]</label>
+			<label kind="assignment" x="-654" y="-306">j++,i++</label>
+			<nail x="-681" y="-263"/>
+		</transition>
+		<transition>
+			<source ref="id2"/>
+			<target ref="id3"/>
+			<label kind="guard" x="-493" y="-229">dis[i][1]&gt;=dis[j][1]</label>
+			<label kind="assignment" x="-443" y="-306">j++</label>
+			<nail x="-392" y="-263"/>
+		</transition>
+		<transition>
+			<source ref="id1"/>
+			<target ref="id2"/>
+		</transition>
+		<transition>
+			<source ref="id0"/>
+			<target ref="id1"/>
+		</transition>
+	</template>
+	<template>
+		<name>StackCommandd</name>
+		<declaration>int i=0,j=2,flag=0;
+
+</declaration>
+		<location id="id5" x="-382" y="-187">
+			<name x="-392" y="-221">Start</name>
+		</location>
+		<location id="id6" x="-382" y="-34">
+			<name x="-417" y="-17">Determine</name>
+			<committed/>
+		</location>
+		<location id="id7" x="-382" y="161">
+			<name x="-391" y="170">Out</name>
+		</location>
+		<init ref="id5"/>
+		<transition>
+			<source ref="id7"/>
+			<target ref="id5"/>
+			<label kind="assignment" x="-585" y="161">diss[Turn]:=0,i:=0,
+min_distance:=0</label>
+			<nail x="-603" y="161"/>
+			<nail x="-603" y="-187"/>
+		</transition>
+		<transition>
+			<source ref="id5"/>
+			<target ref="id6"/>
+			<label kind="guard" x="-374" y="-170">StackNum==5</label>
+		</transition>
+		<transition>
+			<source ref="id6"/>
+			<target ref="id7"/>
+			<label kind="guard" x="-382" y="29">i&gt;=4</label>
+			<label kind="synchronisation" x="-382" y="67">SendOut!</label>
+		</transition>
+		<transition>
+			<source ref="id6"/>
+			<target ref="id6"/>
+			<label kind="guard" x="-586" y="-43">diss[i]&gt;min_distance&amp;i&lt;=4</label>
+			<label kind="assignment" x="-561" y="-59">i++</label>
+			<nail x="-493" y="-119"/>
+			<nail x="-493" y="67"/>
+		</transition>
+		<transition>
+			<source ref="id6"/>
+			<target ref="id6"/>
+			<label kind="guard" x="-237" y="-60">diss[i]&lt;=min_distance&amp;i&lt;=4</label>
+			<label kind="assignment" x="-228" y="-34">min_distance:=diss[i],Turn:=i,
+i++</label>
+			<nail x="-237" y="67"/>
+			<nail x="-237" y="-102"/>
+		</transition>
+	</template>
+	<template>
+		<name>Stack</name>
+		<parameter>const int [1,5] id_name, const int [0,20] distance</parameter>
+		<location id="id8" x="-5227" y="-4666">
+			<name x="-5253" y="-4700">Instack</name>
+		</location>
+		<location id="id9" x="-5116" y="-4581">
+			<name x="-5100" y="-4590">Wait</name>
+		</location>
+		<location id="id10" x="-5227" y="-4487">
+			<name x="-5261" y="-4470">OutStack</name>
+		</location>
+		<init ref="id8"/>
+		<transition>
+			<source ref="id8"/>
+			<target ref="id9"/>
+			<label kind="synchronisation" x="-5168" y="-4649">SendOut?</label>
+		</transition>
+		<transition>
+			<source ref="id9"/>
+			<target ref="id10"/>
+			<label kind="guard" x="-5168" y="-4530">Turn==id_name</label>
+		</transition>
+	</template>
+	<template>
+		<name>Stackk</name>
+		<parameter>const int [0,5] id_name, const int [0,20] distance</parameter>
+		<declaration>int flag=0;</declaration>
+		<location id="id11" x="-433" y="-34">
+			<name x="-443" y="-68">Start</name>
+		</location>
+		<location id="id12" x="-226" y="-37">
+			<name x="-252" y="-71">Instack</name>
+			<committed/>
+		</location>
+		<location id="id13" x="-115" y="48">
+			<name x="-99" y="39">Wait</name>
+		</location>
+		<location id="id14" x="-226" y="142">
+			<name x="-260" y="159">OutStack</name>
+			<committed/>
+		</location>
+		<init ref="id11"/>
+		<transition>
+			<source ref="id14"/>
+			<target ref="id11"/>
+			<label kind="assignment" x="-415" y="143">flag:=1</label>
+			<nail x="-433" y="144"/>
+		</transition>
+		<transition>
+			<source ref="id11"/>
+			<target ref="id12"/>
+			<label kind="guard" x="-382" y="-59">flag==0</label>
+			<label kind="assignment" x="-408" y="-34">diss[id_name]=distance</label>
+		</transition>
+		<transition>
+			<source ref="id12"/>
+			<target ref="id13"/>
+			<label kind="assignment" x="-170" y="-8">StackNum++</label>
+		</transition>
+		<transition>
+			<source ref="id13"/>
+			<target ref="id14"/>
+			<label kind="guard" x="-167" y="99">Turn==id_name</label>
+			<label kind="synchronisation" x="-221" y="68">SendOut?</label>
+			<label kind="assignment" x="-153" y="85">StackNum--</label>
+		</transition>
+	</template>
+	<template>
+		<name>MachineState_Function</name>
+		<declaration>//MachineStateThread的函数</declaration>
+		<location id="id15" x="-416" y="-433">
+			<name x="-426" y="-467">Start</name>
+		</location>
+		<init ref="id15"/>
+		<transition>
+			<source ref="id15"/>
+			<target ref="id15"/>
+			<label kind="synchronisation" x="-237" y="-493">UpdateDefectInfo?</label>
+			<nail x="-254" y="-510"/>
+			<nail x="-229" y="-450"/>
+		</transition>
+		<transition>
+			<source ref="id15"/>
+			<target ref="id15"/>
+			<label kind="synchronisation" x="-305" y="-578">CalStopPosition?</label>
+			<nail x="-331" y="-578"/>
+			<nail x="-271" y="-535"/>
+		</transition>
+		<transition>
+			<source ref="id15"/>
+			<target ref="id15"/>
+			<label kind="synchronisation" x="-484" y="-612">DecisionDefectNumbers?</label>
+			<nail x="-475" y="-586"/>
+			<nail x="-365" y="-586"/>
+		</transition>
+	</template>
+	<template>
+		<name>Mainwindow</name>
+		<location id="id16" x="-1521" y="-1360">
+			<name x="-1538" y="-1351">Start</name>
+		</location>
+		<init ref="id16"/>
+		<transition>
+			<source ref="id16"/>
+			<target ref="id16"/>
+			<label kind="synchronisation" x="-1368" y="-1428">PlcAutoConnect?</label>
+			<label kind="assignment" x="-1385" y="-1453">PLCAutoConnect:=(1-PLCAutoConnect)</label>
+			<nail x="-1411" y="-1453"/>
+			<nail x="-1368" y="-1402"/>
+		</transition>
+		<transition>
+			<source ref="id16"/>
+			<target ref="id16"/>
+			<label kind="synchronisation" x="-1767" y="-1377">TensionButton?</label>
+			<label kind="assignment" x="-1878" y="-1360">TensionSwitch:=1-TensionSwitch</label>
+			<nail x="-1665" y="-1386"/>
+			<nail x="-1665" y="-1335"/>
+		</transition>
+		<transition>
+			<source ref="id16"/>
+			<target ref="id16"/>
+			<label kind="guard" x="-1852" y="-1471">DisplayProcessDefectsWindow==1</label>
+			<label kind="synchronisation" x="-1751" y="-1428">DefectProcessWindowShow!</label>
+			<label kind="assignment" x="-1929" y="-1454">DisplayProcessDefectsWindow:=0</label>
+			<label kind="comments" x="-1708" y="-1454">瑕疵处理弹窗</label>
+			<nail x="-1623" y="-1462"/>
+			<nail x="-1666" y="-1403"/>
+		</transition>
+		<transition>
+			<source ref="id16"/>
+			<target ref="id16"/>
+			<label kind="synchronisation" x="-1606" y="-1496">AllowDefectStopButton?</label>
+			<label kind="assignment" x="-1589" y="-1471">AllowDefectStop:=1-AllowDefectStop</label>
+			<nail x="-1606" y="-1471"/>
+			<nail x="-1445" y="-1471"/>
+		</transition>
+	</template>
+	<template>
+		<name>PLC_Thread</name>
+		<location id="id17" x="-2320" y="-2201">
+			<name x="-2330" y="-2235">Start</name>
+		</location>
+		<location id="id18" x="-2108" y="-2201">
+			<name x="-2142" y="-2252">ConnectPLC</name>
+			<label kind="invariant" x="-2133" y="-2235">t2&lt;=3000</label>
+		</location>
+		<location id="id19" x="-2108" y="-2117">
+			<name x="-2133" y="-2108">ReadPLC</name>
+			<label kind="invariant" x="-2125" y="-2091">t2&lt;=20</label>
+		</location>
+		<init ref="id17"/>
+		<transition>
+			<source ref="id19"/>
+			<target ref="id17"/>
+			<label kind="synchronisation" x="-2295" y="-2133">ProgramQuit?</label>
+			<label kind="assignment" x="-2302" y="-2116">t2:=0,PLCconnectError:=0</label>
+			<nail x="-2320" y="-2116"/>
+		</transition>
+		<transition>
+			<source ref="id19"/>
+			<target ref="id19"/>
+			<label kind="guard" x="-2023" y="-2125">t2&lt;=20</label>
+			<label kind="synchronisation" x="-2023" y="-2142">UpdateModel!</label>
+			<label kind="assignment" x="-2023" y="-2108">t2:=0</label>
+			<nail x="-2023" y="-2057"/>
+			<nail x="-2023" y="-2159"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id19"/>
+			<label kind="assignment" x="-2108" y="-2184">t2:=0,PLCconnectError:=0</label>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id18"/>
+			<label kind="assignment" x="-2023" y="-2235">t2:=0,PLCconnectError:=1</label>
+			<nail x="-2023" y="-2201"/>
+			<nail x="-2023" y="-2252"/>
+		</transition>
+		<transition>
+			<source ref="id17"/>
+			<target ref="id18"/>
+			<label kind="guard" x="-2295" y="-2227">PLCAutoConnect==1</label>
+			<label kind="assignment" x="-2244" y="-2201">t2:=0</label>
+		</transition>
+	</template>
+	<template>
+		<name x="5" y="5">Machine_State</name>
+		<declaration>// Place local declarations here.</declaration>
+		<location id="id20" x="-1937" y="-1657">
+			<name x="-1997" y="-1683">State_1</name>
+		</location>
+		<location id="id21" x="-2107" y="-1657">
+			<name x="-2117" y="-1691">Start</name>
+		</location>
+		<location id="id22" x="-1827" y="-1742">
+		</location>
+		<location id="id23" x="-1827" y="-1547">
+		</location>
+		<location id="id24" x="-1716" y="-1649">
+		</location>
+		<location id="id25" x="-1580" y="-1649">
+		</location>
+		<location id="id26" x="-1402" y="-1649">
+			<name x="-1427" y="-1683">State_2</name>
+			<label kind="invariant" x="-1427" y="-1632">t1&gt;=0.5</label>
+		</location>
+		<location id="id27" x="-1002" y="-1649">
+			<label kind="invariant" x="-1019" y="-1641">t1&gt;=3.5</label>
+		</location>
+		<location id="id28" x="-841" y="-1649">
+		</location>
+		<location id="id29" x="-671" y="-1649">
+			<name x="-688" y="-1683">State_3</name>
+		</location>
+		<location id="id30" x="-671" y="-1411">
+		</location>
+		<location id="id31" x="-1827" y="-1411">
+			<name x="-1852" y="-1445">State_4</name>
+		</location>
+		<location id="id32" x="-2039" y="-1411">
+			<name x="-2065" y="-1445">State_5</name>
+		</location>
+		<location id="id33" x="-1478" y="-1249">
+			<committed/>
+		</location>
+		<location id="id34" x="-977" y="-1249">
+			<committed/>
+		</location>
+		<init ref="id21"/>
+		<transition>
+			<source ref="id34"/>
+			<target ref="id29"/>
+			<label kind="synchronisation" x="-858" y="-1266">UpdateDefectInfo!</label>
+			<nail x="-603" y="-1249"/>
+			<nail x="-603" y="-1649"/>
+		</transition>
+		<transition>
+			<source ref="id33"/>
+			<target ref="id34"/>
+			<label kind="synchronisation" x="-1291" y="-1266">CalStopPosition!</label>
+		</transition>
+		<transition>
+			<source ref="id30"/>
+			<target ref="id31"/>
+			<label kind="guard" x="-1606" y="-1436">DecisionDefectNumber&lt;LenDefectInfo</label>
+			<label kind="assignment" x="-1623" y="-1411">State:=4,DisplayProcessDefectsWindow=1,
+DecisionDefectNumber+=1,DockCountLast:=DockCount</label>
+			<label kind="comments" x="-1274" y="-1436">未停完所有的缺陷</label>
+		</transition>
+		<transition>
+			<source ref="id30"/>
+			<target ref="id26"/>
+			<label kind="guard" x="-951" y="-1504">AllowDefectStop==0</label>
+			<label kind="comments" x="-943" y="-1479">关闭瑕疵停机</label>
+			<nail x="-773" y="-1411"/>
+			<nail x="-773" y="-1487"/>
+			<nail x="-1402" y="-1487"/>
+		</transition>
+		<transition>
+			<source ref="id32"/>
+			<target ref="id33"/>
+			<label kind="guard" x="-1869" y="-1266">DecisionDefectNumber&lt;LenDefectInfo</label>
+			<label kind="synchronisation" x="-1827" y="-1249">DecisionDefectNumbers!</label>
+			<nail x="-2039" y="-1249"/>
+		</transition>
+		<transition>
+			<source ref="id32"/>
+			<target ref="id26"/>
+			<label kind="guard" x="-2014" y="-1513">DecisionDefectNumber&gt;=LenDefectInfo</label>
+			<label kind="assignment" x="-1903" y="-1487">AllDefectDone:=1</label>
+			<label kind="comments" x="-1742" y="-1513">最后一个缺陷停完了</label>
+			<nail x="-2039" y="-1487"/>
+			<nail x="-1402" y="-1487"/>
+		</transition>
+		<transition>
+			<source ref="id31"/>
+			<target ref="id32"/>
+			<label kind="guard" x="-1997" y="-1436">DealDoneFlag==1</label>
+			<label kind="assignment" x="-2005" y="-1411">DealDoneFlag:=0,State:=5</label>
+			<label kind="comments" x="-2021" y="-1386">如果工人点击了“完成”按钮</label>
+		</transition>
+		<transition>
+			<source ref="id29"/>
+			<target ref="id26"/>
+			<label kind="guard" x="-1147" y="-1793">AllowDefectStop==0</label>
+			<label kind="comments" x="-1113" y="-1759">关闭瑕疵停机</label>
+			<nail x="-671" y="-1768"/>
+			<nail x="-1402" y="-1768"/>
+		</transition>
+		<transition>
+			<source ref="id29"/>
+			<target ref="id30"/>
+			<label kind="guard" x="-850" y="-1555">DockCountLast!=DockCount</label>
+		</transition>
+		<transition>
+			<source ref="id28"/>
+			<target ref="id29"/>
+			<label kind="synchronisation" x="-824" y="-1674">UpdateDefectInfo!</label>
+			<label kind="assignment" x="-833" y="-1649">State:=3,
+DockCountLast:=DockCount</label>
+			<label kind="comments" x="-807" y="-1700">更新发送值</label>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="-985" y="-1674">CalStopPosition!</label>
+			<label kind="comments" x="-1062" y="-1606">更新缺陷数据模型，并显示在TableView上</label>
+		</transition>
+		<transition>
+			<source ref="id26"/>
+			<target ref="id27"/>
+			<label kind="guard" x="-1351" y="-1673">AllowDefectStop==1 &amp;&amp; AllDefectDone==0</label>
+			<label kind="synchronisation" x="-1317" y="-1632">DecisionDefectNumbers!</label>
+			<label kind="assignment" x="-1266" y="-1649">State:=3</label>
+			<label kind="comments" x="-1325" y="-1606">决策下一次停机处理?个缺陷</label>
+		</transition>
+		<transition>
+			<source ref="id25"/>
+			<target ref="id26"/>
+			<label kind="synchronisation" x="-1562" y="-1666">SaveDefectModel!</label>
+			<label kind="assignment" x="-1529" y="-1649">State:=2</label>
+		</transition>
+		<transition>
+			<source ref="id24"/>
+			<target ref="id25"/>
+			<label kind="synchronisation" x="-1698" y="-1666">ReadModel!</label>
+		</transition>
+		<transition>
+			<source ref="id23"/>
+			<target ref="id24"/>
+			<label kind="synchronisation" x="-1776" y="-1589">LoadModel!</label>
+		</transition>
+		<transition>
+			<source ref="id22"/>
+			<target ref="id24"/>
+			<label kind="synchronisation" x="-1776" y="-1725">CreateModel!</label>
+		</transition>
+		<transition>
+			<source ref="id20"/>
+			<target ref="id23"/>
+			<label kind="synchronisation" x="-2014" y="-1598">AllreadyExistModel?</label>
+		</transition>
+		<transition>
+			<source ref="id20"/>
+			<target ref="id22"/>
+			<label kind="synchronisation" x="-1971" y="-1734">NonexistModel?</label>
+		</transition>
+		<transition>
+			<source ref="id21"/>
+			<target ref="id20"/>
+			<label kind="assignment" x="-2056" y="-1657">State:=1</label>
+		</transition>
+	</template>
+	<template>
+		<name>STM_32</name>
+		<location id="id35" x="-3740" y="-1606">
+			<name x="-3757" y="-1589">Start</name>
+		</location>
+		<location id="id36" x="-3561" y="-1606">
+		</location>
+		<location id="id37" x="-3910" y="-1606">
+		</location>
+		<init ref="id35"/>
+		<transition>
+			<source ref="id37"/>
+			<target ref="id35"/>
+			<label kind="guard" x="-3952" y="-1555">ServoMode==2</label>
+			<label kind="assignment" x="-3876" y="-1521">DockCount+=1</label>
+			<nail x="-3825" y="-1530"/>
+		</transition>
+		<transition>
+			<source ref="id35"/>
+			<target ref="id37"/>
+			<label kind="synchronisation" x="-3892" y="-1623">StopDone!</label>
+		</transition>
+		<transition>
+			<source ref="id36"/>
+			<target ref="id35"/>
+			<label kind="guard" x="-3714" y="-1530">DockCountLast==DockCount</label>
+			<nail x="-3638" y="-1530"/>
+		</transition>
+		<transition>
+			<source ref="id35"/>
+			<target ref="id36"/>
+			<label kind="synchronisation" x="-3672" y="-1623">Dock!</label>
+		</transition>
+	</template>
+	<template>
+		<name>Servo_Motor</name>
+		<parameter>const int[1,3] id</parameter>
+		<location id="id38" x="-1487" y="-340">
+			<name x="-1538" y="-357">Start</name>
+		</location>
+		<location id="id39" x="-1232" y="-340">
+			<name x="-1317" y="-331">TorqueMode</name>
+		</location>
+		<location id="id40" x="-1487" y="-408">
+		</location>
+		<location id="id41" x="-1071" y="-501">
+			<name x="-1105" y="-527">PositionMode</name>
+			<label kind="comments" x="-1224" y="-484">会造成状态空间爆炸</label>
+		</location>
+		<init ref="id38"/>
+		<transition>
+			<source ref="id38"/>
+			<target ref="id39"/>
+			<label kind="guard" x="-1462" y="-297">id==2</label>
+			<label kind="assignment" x="-1419" y="-297">SpeedState:=0,ServoMode:=1</label>
+			<nail x="-1487" y="-280"/>
+			<nail x="-1232" y="-280"/>
+		</transition>
+		<transition>
+			<source ref="id39"/>
+			<target ref="id38"/>
+			<label kind="synchronisation" x="-1419" y="-263">ProgramQuit?</label>
+			<label kind="assignment" x="-1503" y="-246">t3:=0</label>
+			<nail x="-1198" y="-246"/>
+			<nail x="-1521" y="-246"/>
+		</transition>
+		<transition>
+			<source ref="id39"/>
+			<target ref="id39"/>
+			<label kind="guard" x="-1062" y="-272">t3&gt;=1000</label>
+			<label kind="synchronisation" x="-1071" y="-306">SpeedStop?</label>
+			<label kind="assignment" x="-1071" y="-289">SpeedState:=3,t3:=0</label>
+			<nail x="-1071" y="-306"/>
+			<nail x="-1071" y="-255"/>
+		</transition>
+		<transition>
+			<source ref="id39"/>
+			<target ref="id39"/>
+			<label kind="guard" x="-1071" y="-357">t3&gt;=1000</label>
+			<label kind="synchronisation" x="-1071" y="-374">SpeedDown?</label>
+			<label kind="assignment" x="-1071" y="-340">SpeedState:=2,t3:=0</label>
+			<nail x="-1071" y="-382"/>
+			<nail x="-1071" y="-314"/>
+		</transition>
+		<transition>
+			<source ref="id39"/>
+			<target ref="id39"/>
+			<label kind="guard" x="-986" y="-442">t3&gt;=1000</label>
+			<label kind="synchronisation" x="-1062" y="-450">SpeedUp?</label>
+			<label kind="assignment" x="-1062" y="-425">SpeedState:=1,t3:=0</label>
+			<nail x="-1071" y="-467"/>
+			<nail x="-1071" y="-391"/>
+		</transition>
+		<transition>
+			<source ref="id41"/>
+			<target ref="id39"/>
+			<label kind="guard" x="-1207" y="-425">State==3</label>
+			<label kind="synchronisation" x="-1079" y="-484">StopDone?</label>
+			<label kind="assignment" x="-1215" y="-450">ServoMode:=1</label>
+			<nail x="-1071" y="-476"/>
+		</transition>
+		<transition>
+			<source ref="id39"/>
+			<target ref="id41"/>
+			<label kind="guard" x="-1487" y="-493">(id==3) || (id==2) &amp; (AllowDefectStop==1)</label>
+			<label kind="synchronisation" x="-1190" y="-518">Dock?</label>
+			<label kind="assignment" x="-1232" y="-501">SpeedState:=0,ServoMode:=2,t3:=0</label>
+			<nail x="-1232" y="-501"/>
+		</transition>
+		<transition>
+			<source ref="id40"/>
+			<target ref="id39"/>
+			<label kind="guard" x="-1411" y="-425">TensionSwitch==1</label>
+			<nail x="-1232" y="-408"/>
+		</transition>
+		<transition>
+			<source ref="id38"/>
+			<target ref="id40"/>
+			<label kind="guard" x="-1487" y="-382">id==1</label>
+		</transition>
+		<transition>
+			<source ref="id38"/>
+			<target ref="id39"/>
+			<label kind="guard" x="-1385" y="-357">id==3</label>
+			<label kind="assignment" x="-1411" y="-340">SpeedState:=0,
+ServoMode:=1</label>
+		</transition>
+	</template>
+	<template>
+		<name>UI_Screen</name>
+		<location id="id42" x="-841" y="-510">
+			<name x="-851" y="-544">Start</name>
+		</location>
+		<init ref="id42"/>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id42"/>
+			<label kind="synchronisation" x="-739" y="-459">PlcAutoConnect!</label>
+			<nail x="-705" y="-468"/>
+			<nail x="-722" y="-425"/>
+		</transition>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id42"/>
+			<label kind="synchronisation" x="-705" y="-527">TensionButton!</label>
+			<nail x="-705" y="-544"/>
+			<nail x="-705" y="-485"/>
+		</transition>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id42"/>
+			<label kind="synchronisation" x="-1054" y="-485">SpeedStop?</label>
+			<nail x="-977" y="-493"/>
+			<nail x="-969" y="-451"/>
+		</transition>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id42"/>
+			<label kind="synchronisation" x="-1062" y="-544">SpeedDown!</label>
+			<nail x="-968" y="-561"/>
+			<nail x="-985" y="-510"/>
+		</transition>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id42"/>
+			<label kind="synchronisation" x="-994" y="-621">SpeedUp!</label>
+			<nail x="-909" y="-621"/>
+			<nail x="-960" y="-578"/>
+		</transition>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id42"/>
+			<label kind="synchronisation" x="-739" y="-612">ProgramQuit!</label>
+			<nail x="-756" y="-612"/>
+			<nail x="-705" y="-561"/>
+		</transition>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id42"/>
+			<label kind="synchronisation" x="-901" y="-655">AllowDefectStopButton!</label>
+			<nail x="-892" y="-629"/>
+			<nail x="-782" y="-629"/>
+		</transition>
+	</template>
+	<template>
+		<name>Defect_Process_Window</name>
+		<location id="id43" x="-799" y="-535">
+			<name x="-809" y="-569">Start</name>
+		</location>
+		<init ref="id43"/>
+		<transition>
+			<source ref="id43"/>
+			<target ref="id43"/>
+			<label kind="guard" x="-841" y="-629">DealDoneFlag==0</label>
+			<label kind="assignment" x="-850" y="-663">DealDoneFlag:=1</label>
+			<nail x="-875" y="-637"/>
+			<nail x="-705" y="-637"/>
+		</transition>
+	</template>
+	<template>
+		<name>Camera_Thread</name>
+		<parameter>const int[0,160] actual_speed</parameter>
+		<declaration>int[0,5] State;//状态
+int SpeedBound;//速度界限</declaration>
+		<location id="id44" x="-2116" y="-1198">
+			<name x="-2126" y="-1232">Start</name>
+		</location>
+		<location id="id45" x="-1938" y="-1198">
+			<name x="-2023" y="-1232">Camera_State_0</name>
+			<label kind="invariant" x="-1963" y="-1181">t3&lt;=3000</label>
+		</location>
+		<location id="id46" x="-1938" y="-1037">
+			<name x="-1921" y="-1045">Camera_State_1</name>
+			<label kind="comments" x="-1895" y="-1062">初始化</label>
+		</location>
+		<location id="id47" x="-2116" y="-1037">
+			<name x="-2159" y="-1071">Camera_State_2</name>
+			<label kind="comments" x="-2176" y="-1096">判断相机运行模式</label>
+		</location>
+		<location id="id48" x="-2320" y="-1130">
+			<name x="-2354" y="-1173">Camera_State_3</name>
+			<label kind="comments" x="-2312" y="-1113">面积检测</label>
+		</location>
+		<location id="id49" x="-2320" y="-943">
+			<name x="-2371" y="-935">Camera_State_4</name>
+			<label kind="comments" x="-2352" y="-913">字符检测</label>
+		</location>
+		<location id="id50" x="-2550" y="-1037">
+			<name x="-2601" y="-1045">Save</name>
+		</location>
+		<init ref="id44"/>
+		<transition>
+			<source ref="id50"/>
+			<target ref="id49"/>
+			<label kind="synchronisation" x="-2499" y="-1037">UpdateCameraCode!</label>
+			<nail x="-2320" y="-1037"/>
+		</transition>
+		<transition>
+			<source ref="id50"/>
+			<target ref="id48"/>
+			<label kind="guard" x="-2516" y="-1071">actual_speed&gt;SpeedBound</label>
+			<label kind="synchronisation" x="-2499" y="-1054">UpdateCameraCode!</label>
+			<nail x="-2320" y="-1037"/>
+		</transition>
+		<transition>
+			<source ref="id49"/>
+			<target ref="id50"/>
+			<label kind="guard" x="-2516" y="-977">actual_speed&lt;=SpeedBound</label>
+			<label kind="synchronisation" x="-2490" y="-960">JudgeCorrection!</label>
+			<nail x="-2550" y="-943"/>
+		</transition>
+		<transition>
+			<source ref="id48"/>
+			<target ref="id50"/>
+			<label kind="synchronisation" x="-2490" y="-1147">JudgeCorrection!</label>
+			<nail x="-2550" y="-1130"/>
+		</transition>
+		<transition>
+			<source ref="id47"/>
+			<target ref="id49"/>
+			<label kind="guard" x="-2269" y="-943">actual_speed&lt;=SpeedBound</label>
+			<nail x="-2210" y="-1037"/>
+			<nail x="-2210" y="-943"/>
+		</transition>
+		<transition>
+			<source ref="id47"/>
+			<target ref="id48"/>
+			<label kind="guard" x="-2286" y="-1147">actual_speed&gt;SpeedBound</label>
+			<nail x="-2210" y="-1037"/>
+			<nail x="-2210" y="-1130"/>
+		</transition>
+		<transition>
+			<source ref="id46"/>
+			<target ref="id47"/>
+			<label kind="assignment" x="-2074" y="-1028">SpeedBound:=80</label>
+		</transition>
+		<transition>
+			<source ref="id45"/>
+			<target ref="id46"/>
+			<label kind="assignment" x="-1938" y="-1139">t3:=0,CameraConnectError:=0</label>
+		</transition>
+		<transition>
+			<source ref="id45"/>
+			<target ref="id45"/>
+			<label kind="assignment" x="-1836" y="-1258">CameraConnectError:=1,t3:=0</label>
+			<nail x="-1836" y="-1198"/>
+			<nail x="-1836" y="-1300"/>
+		</transition>
+		<transition>
+			<source ref="id44"/>
+			<target ref="id45"/>
+			<label kind="assignment" x="-2065" y="-1198">State:=0,
+t3:=0</label>
+		</transition>
+	</template>
+	<template>
+		<name>API</name>
+		<declaration>//len(api.defect_info)?</declaration>
+		<location id="id51" x="-4496" y="-4326">
+			<name x="-4506" y="-4360">Start</name>
+			<committed/>
+		</location>
+		<location id="id52" x="-3986" y="-4326">
+			<name x="-3996" y="-4360">intial</name>
+			<label kind="comments" x="-4020" y="-4292">初始化各种参数</label>
+		</location>
+		<init ref="id51"/>
+		<transition>
+			<source ref="id51"/>
+			<target ref="id52"/>
+			<label kind="assignment" x="-4462" y="-4369">DockCount:=0,DockCountLast:=-1,DecisionDefectNumber:=0,
+DisplayProcessDefectsWindow:=0,AllDefectDone:=0,DealDoneFlag:=0,
+AllowDefectStop:=0,PLCconnectError:=0,PLCAutoConnect:=1,
+LenDefectInfo:=26,TensionSwitch=0</label>
+		</transition>
+	</template>
+	<template>
+		<name>model</name>
+		<location id="id53" x="-357" y="-76">
+			<name x="-374" y="-110">Start</name>
+		</location>
+		<init ref="id53"/>
+		<transition>
+			<source ref="id53"/>
+			<target ref="id53"/>
+			<label kind="synchronisation" x="-187" y="-110">UpdateModel?</label>
+			<nail x="-204" y="-127"/>
+			<nail x="-178" y="-68"/>
+		</transition>
+		<transition>
+			<source ref="id53"/>
+			<target ref="id53"/>
+			<label kind="synchronisation" x="-629" y="-68">SaveDefectModel?</label>
+			<nail x="-493" y="-110"/>
+			<nail x="-484" y="-8"/>
+		</transition>
+		<transition>
+			<source ref="id53"/>
+			<target ref="id53"/>
+			<label kind="synchronisation" x="-391" y="-221">UpdateDefectInfo?</label>
+			<label kind="comments" x="-357" y="-187">测试用</label>
+			<nail x="-263" y="-195"/>
+			<nail x="-391" y="-195"/>
+		</transition>
+		<transition>
+			<source ref="id53"/>
+			<target ref="id53"/>
+			<label kind="synchronisation" x="-518" y="42">CreateModel?</label>
+			<nail x="-391" y="59"/>
+			<nail x="-476" y="8"/>
+		</transition>
+		<transition>
+			<source ref="id53"/>
+			<target ref="id53"/>
+			<label kind="synchronisation" x="-340" y="68">ReadModel?</label>
+			<nail x="-272" y="34"/>
+			<nail x="-348" y="59"/>
+		</transition>
+		<transition>
+			<source ref="id53"/>
+			<target ref="id53"/>
+			<label kind="synchronisation" x="-187" y="-17">LoadModel?</label>
+			<nail x="-170" y="-51"/>
+			<nail x="-204" y="17"/>
+		</transition>
+		<transition>
+			<source ref="id53"/>
+			<target ref="id53"/>
+			<label kind="synchronisation" x="-544" y="-187">NonexistModel!</label>
+			<nail x="-408" y="-195"/>
+			<nail x="-493" y="-127"/>
+		</transition>
+		<transition>
+			<source ref="id53"/>
+			<target ref="id53"/>
+			<label kind="synchronisation" x="-221" y="-187">AllreadyExistModel!</label>
+			<nail x="-204" y="-144"/>
+			<nail x="-238" y="-187"/>
+		</transition>
+	</template>
+	<system>// Place template instantiations here.
+MachineState=Machine_State();
+Model=model();
+MachineStateFunction=MachineState_Function();
+api=API();
+MainWindow=Mainwindow();
+Ui=UI_Screen();
+Plc=PLC_Thread();
+DefectProcessWindow=Defect_Process_Window();
+CameraThread=Camera_Thread(30);
+STM32=STM_32();
+ServoMotor1=Servo_Motor(1);
+ServoMotor2=Servo_Motor(2);
+ServoMotor3=Servo_Motor(3);
+SC=StackCommandd();
+S1=Stackk(1,15);S2=Stackk(2,10);S3=Stackk(3,12);S4=Stackk(4,13);S5=Stackk(0,14);
+//问题：所有template都是同时运行，实际python程序里面不是同时运行;PLC_Thread里面的updata model在python里面只是更新一部分model，并不是全部model
+
+
+// List one or more processes to be composed into a system.
+//system STM32,Model,CameraThread,DefectProcessWindow,Plc,MachineState,api,MachineStateFunction,MainWindow,Ui,ServoMotor1,ServoMotor2,ServoMotor3,S1,S2,S3,S4,S5,ST;
+system S1,S2,S3,S4,S5,SC;
+    </system>
+	<queries>
+		<query>
+			<formula>A[] not deadlock</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>A[] !(ServoMotor2.PositionMode and MachineState.State_4)</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; Plc.ReadPLC</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; CameraThread.Camera_State_4</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>A[]ServoMotor2.PositionMode +ServoMotor2. TorqueMode &lt;=1</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>DecisionDefectNumber==0 --&gt; AllDefectDone==1</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>DecisionDefectNumber==26 --&gt; AllDefectDone==1</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; CameraThread.Camera_State_0 imply (t3&lt;=3000)</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>A&lt;&gt; MachineState.State_2 imply (AllDefectDone==1)</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; ServoMotor2.TorqueMode</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; ServoMotor2.PositionMode</formula>
+			<comment></comment>
+		</query>
+		<query>
+			<formula>S1.OutStack --&gt; S2.Wait</formula>
+			<comment></comment>
+		</query>
+	</queries>
+</nta>
