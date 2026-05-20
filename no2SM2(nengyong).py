@@ -1,0 +1,2553 @@
+from cgi import test
+import csv
+import datetime
+import os
+import re
+import socket
+import struct
+import sys
+import threading
+import time
+from datetime import timedelta
+
+import numpy as np
+import pandas as pd
+import pyqtgraph as pg
+from pymodbus.client.sync import ModbusTcpClient
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import QDateTime
+from PyQt5.QtWidgets import *
+from pyqtgraph.Qt import QtCore, QtGui
+from transitions.extensions import LockedMachine
+from math import asin,acos,atan,sqrt,pi
+
+from Ui_KnifeEdit import Ui_KnifeEdit
+from Ui_NewUI import Ui_MainWindow
+from Ui_peiFang import Ui_Form1
+from flawDeal import Ui_DefectProcess
+from shoujuanSet import Ui_ShouJuan
+
+lock = threading.Lock()
+_translate = QtCore.QCoreApplication.translate
+# readPath = getattr(sys, '_MEIPASS', os.path.abspath(os.path.dirname(__file__)))
+readPath = 'D:/no2Py'
+flawPath = 'C:/Users/whscs/Desktop'
+# print('readpath',readPath)
+writePath = os.getcwd()
+# writePath = 'D:/no2Py'
+PLCfilepath = readPath + '/ModbusTCP.csv'
+peifangPath = readPath + '/peifang.csv'
+knifePath = readPath + '/KnifeFile.csv'
+tempPath = readPath + '/tempData.csv'
+chuandaiPath = readPath + '/chuandai.png'
+
+flawFileFolderPath = flawPath + '\\SlitterCSVData'
+flawPicFolderPath = flawPath + '\\SlitterCSVData'
+def updateFlawFile(path):       #从指定文件夹获取最新的文件
+    lists = os.listdir(path)
+    lists.sort(key=lambda x:os.path.getmtime(path +'\\'+x))
+    #把目录和文件名合成一个路径
+    # print(lists)
+    file_new = os.path.join(path,lists[-1])
+    return file_new
+
+def microTimer(t):      #毫秒定时器，t单位为毫秒
+    start,end = 0,0
+    start = time.time()
+    # print(start)
+    t = t/1000
+    while end-start<t:
+        end = time.time()
+    # print(end-start)
+
+def receive():
+    global receive_count
+    # for i in range(100):
+    # if receive_count+9 >= length_data:
+    #     receive_count = 0
+    # for i in range(9):
+    receive_count = api.receive_count+1
+    if receive_count >= 1000:
+        receive_count = 0
+    api.containerData1.pop(0)
+    api.containerData2.pop(0)
+    api.containerData3.pop(0)
+    api.containerData4.pop(0)
+    api.containerData5.pop(0)
+    api.containerData6.pop(0)
+
+    api.containerData1.append(api.speedNow)
+    api.containerData2.append(api.fangjuanActFUp)
+    api.containerData3.append(api.fangjuanRUp)
+    api.containerData4.append(api.lengthAct)
+    api.containerData5.append(api.fangjuanActFDown)
+    api.containerData6.append(api.fangjuanRDown)
+    # 以下6行是测试用的数据，实际使用要注释掉
+    # containerData1.append(data[receive_count][3])
+    # containerData2.append(data[receive_count][0])
+    # containerData3.append(data[receive_count][1])
+    # containerData4.append(data[receive_count][2])
+    # containerData5.append(data[receive_count][4])
+    # containerData6.append(data[receive_count][5])
+
+    # Timer(0.1,receive).start()
+
+
+def dec_to_float(H,L):                #十进制转浮点数(从PLC读数据)
+    if (H==24576) & ((L==48618)|(L==15850)):
+        return(0)
+    else:        
+        A = str(hex(H).replace('0x','').zfill(4))
+        B = str(hex(L).replace('0x','').zfill(4))
+        s = B+A
+        try:
+            ret = struct.unpack('!f',bytes.fromhex(s))[0]
+            return(ret)
+        except Exception:
+            print('Exception occurs:','H:',H,'L:',L,'A:',A,'B:',B)
+            return 0
+
+
+def inverse(a):                       #调换高低位(向PLC发数据)
+    a0 = struct.pack('>f', float(a)).hex()
+    a1 = a0[0:4]
+    a2 = a0[4:8]
+    return [int(a2,16),int(a1,16)]
+
+
+def binlist_to_int(a):                #二进制数组转整数
+    t = 0
+    for i in range(len(a)):
+        t = t + a[i]*(2**i)
+    return(t)
+
+
+def dec_to_binlist(a, t):             #十进制a转t位二进制
+    ret = []
+    for i in range(t):
+        ret.append(a%2)
+        a = a // 2
+    # ret.reverse()
+    return(ret)
+
+
+def get_addr(name):                   #获取数据的地址
+    with open(PLCfilepath, newline='', encoding='GBK') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if len(row) > 1:
+                if row[1] == name:
+                    return(int(row[7])-1)
+
+
+def send_data_to_PLC():               #向PLC发送数 
+    pass
+    if api.uiEA:
+        client.write_registers (values=inverse(api.SpeedLmitHigh)+ inverse(api.SpeedLmitLow)+ inverse(api.lengthSet)+ inverse(api.xintong_widthUp)+
+                                        inverse(api.fangjuanFSetUp)+ inverse(api.Mo_WidthUp)+ inverse(api.Mo_thickUp)+ inverse(api.xintongTypeUp)+
+                                        inverse(api.moTypeUp)+ inverse(api.xintong_widthDown)+ inverse(api.fangjuanFSetDown)+ inverse(api.Mo_WidthDown)+
+                                        inverse(api.Mo_thickDown)+ inverse(api.xintongTypeDown)+inverse(api.moTypeDown)+inverse(api.Accelerate_time)+
+                                        inverse(api.Slow_time)+ inverse(api.Stop_time), unit=2, address=28, data_format='!f')
+        client.write_registers (values=inverse(api.xintongSizeUp) + inverse(api.xintongSizeDown) + inverse(api.didaoDingWei) + inverse(api.Meters_Stop), unit=2, address=98, data_format='!f')
+        client.write_registers (values=inverse(api.speedJog), unit=2, address=110, data_format='!f')
+        client.write_registers (values=inverse(api.tongkuanDown) + inverse(api.tongkuanUp), unit=2, address=138, data_format='!f')
+        if api.MXlist[5][2]:
+            client.write_registers (values=inverse(api.flawNums[api.badPoint]) + inverse(api.Amount_LeftFlaw) + inverse(api.Meters_NextFlaw), unit=2, address=188, data_format='!f')
+        client.write_registers (values=inverse(api.shoujuanFSetUp) + inverse(api.shoujuanFSetDown) + inverse(api.zhuiduUp) + inverse(api.zhuiduDown), unit=2, address=416, data_format='!f')
+        client.write_registers (values=inverse(api.targetUp) + inverse(api.targetDown) + inverse(api.circlesUp) + inverse(api.circlesDown), unit=2, address=444, data_format='!f')
+    
+
+def logbook():                        #生成工作日志
+    print('log1')
+    now = datetime.datetime.now()
+    date = datetime.datetime.strftime(now,'%Y-%m-%d')
+    year = datetime.datetime.strftime(now,'%Y')
+    month = datetime.datetime.strftime(now,'%m')
+    starttime = datetime.datetime.strftime(api.starttime,'%H:%M:%S')
+    endtime = datetime.datetime.strftime(api.endtime,'%H:%M:%S')
+    span = api.endtime-api.starttime
+    Monday = now - timedelta(days=now.weekday())
+    tupleMonday = Monday.timetuple()
+    Monday = str(tupleMonday.tm_year)  +"/"+ str(tupleMonday.tm_mon) +"/"+ str(tupleMonday.tm_mday)
+    Sunday = now + timedelta(days=6-now.weekday())
+    tupleSunday = Sunday.timetuple()
+    Sunday = str(tupleSunday.tm_year)  +"/"+ str(tupleSunday.tm_mon) +"/"+ str(tupleSunday.tm_mday)
+    filepathDay = writePath + '\\日工作日志\\' + date + '工作日志.csv'
+    filepathWeek =  writePath + '\\周工作日志\\' + Monday.replace('/','-') + '~' + Sunday.replace('/','-') + '周工作日志.csv'
+    filepathMonth = writePath + '\\月工作日志\\' + year + '年' + month + '月工作日志.csv'
+    print('log2')
+    #生成日工作日志
+    if os.path.exists(filepathDay):
+        dfDay = pd.read_csv(filepathDay,encoding='GBK',index_col=0)
+        newlogDay = pd.DataFrame([{'序号':len(dfDay.index.values)+1,'日期':date, '开始时间':starttime, '结束时间':endtime, '时长':span, '上放卷张力':api.fangjuanFSetUp,'下放卷张力':api.fangjuanFSetDown, '收卷米长':api.lengthAct}])
+        newlogDay.to_csv(filepathDay,encoding='GBK',mode='a',index=False,header=False)
+    else:
+        newlogDay = pd.DataFrame([{'序号':1,'日期':date, '开始时间':starttime, '结束时间':endtime, '时长':span, '上放卷张力':api.fangjuanFSetUp,'下放卷张力':api.fangjuanFSetDown, '收卷米长':api.lengthAct}])
+        newlogDay.to_csv(filepathDay,encoding='GBK',mode='a',index=False,header=True)
+    #生成周工作日志
+    if os.path.exists(filepathWeek):
+        dfWeek = pd.read_csv(filepathWeek,encoding='GBK',index_col=0)
+        newlogWeek = pd.DataFrame([{'序号':len(dfWeek.index.values)+1,'日期':date, '开始时间':starttime, '结束时间':endtime, '时长':span, '上放卷张力':api.fangjuanFSetUp,'下放卷张力':api.fangjuanFSetDown, '收卷米长':api.lengthAct}])
+        newlogWeek.to_csv(filepathWeek,encoding='GBK',mode='a',index=False,header=False)
+    else:
+        newlogWeek = pd.DataFrame([{'序号':1,'日期':date, '开始时间':starttime, '结束时间':endtime, '时长':span, '上放卷张力':api.fangjuanFSetUp,'下放卷张力':api.fangjuanFSetDown, '收卷米长':api.lengthAct}])
+        newlogWeek.to_csv(filepathWeek,encoding='GBK',mode='a',index=False,header=True)
+    #生成月工作日志
+    if os.path.exists(filepathMonth):
+        dfMonth = pd.read_csv(filepathMonth,encoding='GBK',index_col=0)
+        newlogMonth = pd.DataFrame([{'序号':len(dfMonth.index.values)+1,'日期':date, '开始时间':starttime, '结束时间':endtime, '时长':span, '上放卷张力':api.fangjuanFSetUp,'下放卷张力':api.fangjuanFSetDown, '收卷米长':api.lengthAct}])
+        newlogMonth.to_csv(filepathMonth,encoding='GBK',mode='a',index=False,header=False)
+    else:
+        newlogMonth = pd.DataFrame([{'序号':1,'日期':date, '开始时间':starttime, '结束时间':endtime, '时长':span, '上放卷张力':api.fangjuanFSetUp,'下放卷张力':api.fangjuanFSetDown, '收卷米长':api.lengthAct}])
+        newlogMonth.to_csv(filepathMonth,encoding='GBK',mode='a',index=False,header=True)
+    print('log3')
+
+
+def judgeNum():                       #数字判断
+    global msagint
+    global lastmsag
+    msagint2 = msagint[:]
+    # print('now',msagint2)
+    lastmsag2 = lastmsag[:]
+    # print('last',lastmsag2)
+    s=api.ordertype                   #当确定识别顺序为升序后，给定s的值为1
+
+    laststr = str(lastmsag2[1]+lastmsag2[2]+lastmsag2[3]+lastmsag2[4])
+    lastnum = int(laststr.replace(' ',''))
+    nowstr = str(msagint2[1]+msagint2[2]+msagint2[3]+msagint2[4])
+    nownum = int(nowstr.replace(' ',''))
+    deltaL = abs(msagint2[18]-lastmsag2[18])
+
+    numpredict = int(lastnum + s*(deltaL//api.deltaP)*api.deltaP) if (deltaL%api.deltaP < (api.deltaP/2)) else int(lastnum + s*(deltaL//api.deltaP + 1)*api.deltaP) #预测这个标应为多少
+    prestr = str(numpredict).zfill(4)
+
+    # print(msagint2[18],lastmsag2[18],'delta',deltaL,laststr,nowstr,'pre:',prestr,(nownum-lastnum)*s*(api.deltaP*0.7),(nownum-lastnum)*s*(api.deltaP*1.3))
+        
+    # if (deltaL > ((nownum-lastnum)*s*(api.deltaP*0.6)))&(deltaL < ((nownum-lastnum)*s*(api.deltaP*1.4))):                 #米长符合
+    if 1:
+
+        numpredict = int(lastnum + s*(deltaL//api.deltaP)*api.deltaP) if (deltaL%api.deltaP < (api.deltaP/2)) else int(lastnum + s*(deltaL//api.deltaP + 1)*api.deltaP) #预测这个标应为多少
+        prestr = str(numpredict).zfill(4)
+        # print('预测标码：',prestr)
+
+        if nownum != lastnum:
+            # print('nowstr:',nowstr)5
+            # print('predict:',prestr)
+            if nowstr.replace(' ','') == prestr:
+                # print('nowstr:',nowstr)
+                # print('predict:',prestr)
+                return('correct')
+            else:
+                return('Error')
+        else:
+            return('Error')
+    else:
+        return('Error')
+
+
+def dataDeal(opendata):               #x42有数字再调用
+    firstLen = api.oriLength
+    deltaLen = firstLen%5
+
+    TrainSample = pd.DataFrame()
+    TrainSample['LenSum'] = ''
+    TrainSample['CharWidth'] = ' '
+    TrainSample['Gradient'] = ' '
+    TrainSample['CharLen'] = ' '
+    result = divmod(api.fangjuanL-deltaLen,5)     #获取米长的商和余数 判断条件1
+    charWidth = abs(opendata[7]-opendata[6])      #X42-X14  字体宽度判断条件2
+    gradient  = abs(opendata[7]-opendata[5])      #X42-X11  字体倾斜程度 判断条件3
+    charLen1st = abs(opendata[8]-opendata[9])     #Y11-Y12  第1个字符长度 判断条件4
+    charLen2rd = abs(opendata[14]-opendata[15])   #Y41-Y42  第4个字符长度 判断条件4    
+
+    if  (result[1] >4) or (result[1]) == 0:
+        TrainSample.loc[0,'LenSum'] = 1
+    else:
+        TrainSample.loc[0,'LenSum'] = 0
+    #处理倾斜度
+    if gradient <= 10:
+        TrainSample.loc[0,'Gradient'] = 1
+    else:
+        TrainSample.loc[0,'Gradient'] = 0
+    #处理第1第4个字的长度
+    if  (charLen1st >= 5) & (charLen2rd >= 5):
+        TrainSample.loc[0,'CharLen'] = 1
+    else:
+        TrainSample.loc[0,'CharLen'] = 0
+    #处理字体宽度
+    if charWidth < 30:
+        TrainSample.loc[0,'CharWidth'] = 1
+    else:
+        TrainSample.loc[0,'CharWidth'] = 0
+    return TrainSample
+
+
+def makeDecision(flawFileName):       #生成决策表
+    api.badMetersDone = []
+    vHigh = (100/60) if api.SpeedLmitHigh == 0 else (api.SpeedLmitHigh/60)            # 设定高速运行的速度值，单位m/s
+    vLow = (50/60) if api.SpeedLmitLow == 0 else (api.SpeedLmitLow/60)                # 设定低速运行的速度值，单位m/s
+    tUp = 5 if api.Accelerate_time == 0 else api.Accelerate_time                     # 设定升速时间，单位s
+    tDown = 5 if api.Slow_time == 0 else api.Slow_time                    # 设定降速时间，单位s
+    api.aUp = vHigh / tUp           # 计算升速的加速度
+    api.aDown = vHigh / tDown       # 计算降速的加速度
+    # xHUp = vHigh**2 / (2*api.aUp)   # 计算速度从0升到高速走过的距离
+    # xLUp = vLow**2 / (2*api.aUp)    # 计算速度从0升到低速走过的距离
+    # xHDown = (vHigh**2 - vLow**2) / (2*api.aDown)   # 计算速度从高速降到低速走过的距离
+    # xLDown = vLow**2 / (2*api.aDown)                # 计算速度从低速降到0走过的距离
+    badMetersFilepath = flawFileName
+    global badMetersdata
+    badMetersdata = pd.read_csv(badMetersFilepath,encoding='GBK',header=None)
+    api.flawNums = badMetersdata[0].values.tolist()
+    api.badMeters = badMetersdata[4].values.tolist()
+    api.badMetersX = badMetersdata[3].values.tolist()
+    api.badPics = badMetersdata[6].values.tolist()
+    api.zhengfan = badMetersdata[5].values.tolist()
+    
+    # api.zhengfan.insert(0,0)
+    api.badMetersDone = []
+    for i in range(len(api.badMeters)):
+        api.flawNums[i] = int(api.flawNums[i])
+        api.badMeters[i] = float(api.badMeters[i])/1000
+        api.badMetersX[i] = float(api.badMetersX[i])
+        api.zhengfan[i] = int(api.zhengfan[i])
+        api.findPoint[api.flawNums[i]] = i
+        if api.biaoliInverseFlag:
+            api.zhengfan[i] = 1-api.zhengfan[i]
+            api.badMetersX[i] = api.Mo_WidthDown - api.badMetersX[i]
+        # if api.zhengfan[i] == '正面':
+        #     api.zhengfan[i] = 1
+        # elif api.zhengfan[i] == '反面':
+        #     api.zhengfan[i] = 0
+    # api.badMeters = [0.6, 5.6, 15.7, 30.75, 43.2]       # 缺陷位置示例，单位m
+    # print('bad points:', api.badMeters)
+
+    pos = []                    # 记录要做动作的位置
+    act = []                    # 记录要做的动作，1加速，0减速
+    tar = []                    # 记录做出这一动作的目标速度是多少，单位m/s
+    # ————————————生成决策表————————————
+    # api.badMeters.insert(0,0)
+    # api.badMetersX.insert(0,0)
+    for i in range(1,len(api.badMeters)):
+        if api.zhengfan[i]:
+            api.badMeters[i] += api.offsetFront
+        elif api.zhengfan[i] == 0:
+            api.badMeters[i] += api.offsetBack
+
+    api.LCamera = (api.fangjuanL - api.lengthDelta) * api.ordertype
+    # api.jiedaiNow = (api.fangjuanL - api.lengthDelta - api.LJiedai)
+    # print('delta',api.lengthDelta,api.jiedaiNow)
+
+    # for i in range(len(api.badMeters)-1):
+    #     if api.jiedaiNow <= 0:
+    #         api.badPoint = 1
+    #         break
+    #     # print(api.jiedaiNow, api.badMeters[i], api.badMeters[i+1])
+    #     if (api.jiedaiNow >= (api.badMeters[i])) & (api.jiedaiNow < api.badMeters[i+1]):    #当前位置在两个缺陷之间
+    #         # print('camera',api.LCamera)
+    #         api.badPoint = i+1      #缺陷编号
+    #         print('flaw num:',api.badPoint)
+    #         break
+    # if api.MXlist[1][11] & (api.lengthAct <= api.Meters_NextFlaw) & (abs(api.lengthAct-api.Meters_NextFlaw)<=0.5):
+    #     api.badPoint += 1
+    # if api.badPoint >= len(api.badMeters):
+    #     api.badPoint = len(api.badMeters)-1
+    # api.Meters_NextFlaw = (api.badMeters[api.badPoint] + api.lengthDelta + api.LJiedai)  #缺陷位置米数
+    # if api.Meters_NextFlaw <= 0:
+    #     api.Meters_NextFlaw = api.badMeters[api.badPoint]
+    # api.Amount_LeftFlaw = len(api.badMeters)-api.badPoint   #剩余缺陷数量
+    # if api.badPoint == len(api.badMeters)-1:
+    #     api.Amount_LeftFlaw = 0
+    # client.write_registers (values=inverse(api.badPoint) + inverse(api.Amount_LeftFlaw) + inverse(api.Meters_NextFlaw), unit=2, address=188, data_format='!f')
+    # client.write_coils(50,[api.zhengfan[api.badPoint]])
+
+    # return([pos,act,tar])
+
+def renewTargetsInStack():            #对栈内所有目标停机位置刷新一次
+    x1x2 = sqrt(api.yagunBackUp*(api.yagunBackUp + 2*(api.houshoujuanR + 60)))/1000
+    x3x4 = sqrt(6972.25 + (267.5 - api.yagunBackUp)**2 - 14400)/1000
+    alpha = pi - acos((api.houshoujuanR + 60)/(api.yagunBackUp + api.houshoujuanR + 60)) \
+                - atan(x3x4/120) - atan(83.5/(267.5 - api.yagunBackUp))
+    x5 = 60 * alpha / 1000
+    beta = asin((api.houshoujuanR + 60)/(api.yagunBackUp + api.houshoujuanR + 60))
+    x6 = api.houshoujuanR * (beta + pi/3) / 1000
+    xleft = x1x2 + x3x4 + x5 + x6
+    api.LCamera = (api.fangjuanL - api.lengthDelta) * api.ordertype
+
+    for item in api.stopStack:        #刷新公式：停机位置=收卷长度+目标到相机的绝对距离—（瑕疵位置-相机米长）
+        p = api.findPoint[item[0]]
+        if (item[2] == 0) | (item[2] == 1):     #第一、第二观察区
+            item[1] = api.lengthAct + api.cam2view[api.cameraPos][item[2]] - (api.badMeters[p] - api.LCamera)
+        elif (item[2] == 2) | (item[2] == 3):   #切刀后第一、第二贴标区
+            item[1] = api.lengthAct + api.cam2knife[api.cameraPos][item[2]-2] - (api.badMeters[p] - api.LCamera)
+        elif (item[2] == 4) | (item[2] == 5):   #上收卷、下收卷
+            item[1] = api.lengthAct + api.cam2wind1[api.cameraPos][item[2]-4] + xleft - (api.badMeters[p] - api.LCamera)
+
+    api.stopStack.sort(key = lambda x:x[1], reverse = True)
+    print('stack now:',api.stopStack)
+
+    f = open(readPath + '\\stopStack.csv', 'w', newline='')
+    csv.writer(f).writerows(api.stopStack)
+    f.close()
+
+    # f = open(readPath + '\\stopStack.csv', 'r', newline='')
+    # reader = csv.reader(f)
+    # ss = []
+    # for i in reader:
+    #     ss.append([int(i[0]), float(i[1]), int(i[2])])
+    # print('--------------',ss == api.stopStack)
+
+def saveTempData():                   #保存临时数据
+    renew = pd.DataFrame([{'lastNum':api.numNow, 'lengthDelta':api.lengthDelta, 'ordertype':api.ordertype, \
+                            'cameraPos':api.cameraPos, 'biaoliInverseFlag':api.biaoliInverseFlag}])
+    renew.to_csv(tempPath,mode='w',index=False,header=True)
+
+class NaiveBeyes:                     #朴素贝叶斯类
+    def  __init__(self):
+        self.model = {}
+    
+    def fit(self,Xtrain,Ytrain = pd.Series()):
+        if not Ytrain.empty:
+            Xtrain = pd.concat([Xtrain, Ytrain], axis=1)
+        self.model = self.buildNaiveBayes(Xtrain) 
+        return self.model
+
+    def buildNaiveBayes(self,Xtrain):
+        Ytrain = Xtrain.iloc[:,-1]
+        # Ytrain = Xtrain.loc[:,'CoE']
+        a = len(Ytrain)
+        # print(a)
+        # print(type(Ytrain))
+        yCounts = Ytrain.value_counts()
+        yCounts = yCounts.apply(lambda x: (x+1)/(yCounts.size+a)) #拉普拉斯平滑，防止出现新特性使P=0
+        
+        #完成了对按键数量的统计
+        retModel = {}
+        for nameClass,val in yCounts.items():
+            retModel[nameClass] = {'pClass':val,'pFeature':{}}   #对按键操作完毕
+        
+        #统计特性
+        propNameAll = Xtrain.columns[:-1]          #返回列名 米长、速度差、面积
+        allPropByFeature = {}
+        for nameFeature in propNameAll:
+            allPropByFeature[nameFeature] = list(Xtrain[nameFeature].value_counts().index)
+        # print(allPropByFeature)
+        for nameClass,group in Xtrain.groupby(Xtrain.columns[-1]):       #最后一列CoE
+            for nameFeature in propNameAll:
+                eachClassPFeature = {}
+                propData = group[nameFeature]
+                propClassSummary = propData.value_counts()
+                
+                for propName in allPropByFeature[nameFeature]:
+                    if not propClassSummary.get(propName):
+                        propClassSummary[propName] = 0
+                Ni = len(allPropByFeature[nameFeature])
+                propClassSummary = propClassSummary.apply(lambda x:(x+1)/(propData.size+Ni))
+                for nameFeatureProp,valp in propClassSummary.items():
+                        eachClassPFeature[nameFeatureProp] = valp
+                retModel[nameClass]['pFeature'][nameFeature] = eachClassPFeature
+        return retModel
+
+    def prediceNaiveBayes(self,data):
+        curMaxrate = None
+        curClassSelect = None
+        for nameClass , infoModel in self.model.items ():
+            rate = 0
+            rate += np.log(infoModel['pClass'])
+            PFeature = infoModel['pFeature']
+
+            for nameFeature , val in data.items():
+                propsRate = PFeature.get(nameFeature)
+                if not propsRate:
+                    continue
+                rate += np.log(propsRate.get(val,0))
+            
+            if curMaxrate == None or rate > curMaxrate:
+                curMaxrate = rate
+                curClassSelect = nameClass
+        return curClassSelect
+    
+    def predict(self,data):
+        if isinstance(data,pd.Series):
+            return self.prediceNaiveBayes(data)
+        # return data.apply(lambda d:self.prediceNaiveBayes(d),axis=1)
+        asd = list(data.apply(lambda d:self.prediceNaiveBayes(d),axis=1))
+        return asd[0]
+
+
+class photoThread (threading.Thread):      #采集图像类
+    def __init__(self, threadID, name, stopflag):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+        self.name = name
+        self.stop = stopflag
+
+    def close(self):
+        self.stop = 1
+
+    def run(self):
+        # in_data = pd.read_csv("TrainingSample.csv",encoding='utf-8')
+        # target_host = "192.168.1.113"
+        # target_port = 8500
+        # global client2
+        # #建立socket对象
+        # client2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # #连接客户端
+        # print('111111')
+        # client2.connect((target_host,target_port))
+
+        # naivebayes = NaiveBeyes()
+        # naivebayes.fit(in_data)
+        firstpush = True
+        tt = 16
+        global lastmsag
+        global msagint
+        
+        lastmsag = []
+        sparelast = []
+        for i in range(tt+7):
+            lastmsag.append(0)
+            sparelast.append(0)
+
+        speedBound = 80             #字符识别和面积检测的速度界限
+        timeNow = str(datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+        path = readPath + '\\CameraData\\' + timeNow + 'CameraData.csv' 
+        #f = open(path,'a+',newline='')
+        with open(path, 'a+', newline='') as f:
+            titles = ['Index', 'StartLine', '1', '2', '3', '4','X11','X14','X42','Y11','Y12','Y21','Y22','Y31','Y32','Y41','Y42','Judgement','Speed','LengthSum','jogSpeed','fangjuanL','stopStack','Time']
+            total = 0
+            if os.path.getsize(path) == 0:
+                csv.writer(f).writerow(titles)
+                total = 1
+            else:
+                total = len(open(path).readlines())
+            
+            msagint = []
+            arealast = 1
+            api.pointscount = 0
+            lastx = 0
+            for i in range(tt+7):
+                msagint.append(0)
+            last_mode = api.modetype
+            while True:
+                # print('yunxing moshi ',api.modetype)
+                lines = []
+                if (api.modetype == 1) & (api.speedNow > speedBound):              #速度超过界限时切换到面积检测
+                    api.modetype = 0
+                    if api.modetype != last_mode:       #如果运行模式要切换了就发送指令
+                        mode0 = 'MW,#L0002,{0}'.format(1-api.modetype)
+                        mode0 = bytes(mode0+'\r',encoding='utf-8')
+                        client2.send(mode0)
+                    last_mode = api.modetype
+                elif (api.modetype == 0) & (api.speedNow <= speedBound):           #速度降到界限时切换到字符识别
+                    api.modetype = 1
+                    if api.modetype != last_mode:       #如果运行模式要切换了就发送指令
+                        mode0 = 'MW,#L0002,{0}'.format(1-api.modetype)
+                        mode0 = bytes(mode0+'\r',encoding='utf-8')
+                        client2.send(mode0)
+                    last_mode = api.modetype
+
+                for j in range(50):
+                    if api.modetype == 0:       #面积检测
+                        msg = 'MR,#L0000[16],#L0000[0]'
+                        msg = bytes(msg+'\r',encoding="utf-8")
+                        client2.send(msg)
+                        msag = client2.recv(4096).decode('utf-8')
+                        msag = msag.split(',')
+                        try:
+                            xLable = float(re.findall(r"\d+\.?\d*", msag[2])[0]) 
+                        except Exception:
+                            xLable = 0         
+                        api.pointscount = int(float(api.numNow))/api.deltaP
+                        try:
+                            areanow = int(msag[1][10]) 
+                        except Exception:
+                            areanow = 1
+                        if (arealast == 1)&(areanow == 0):                      #出现面积符合的下降沿
+                            if lastx == 0:                                      #第一个标，计数+1，更新上一个标的米数
+                                api.pointscount = api.pointscount + api.ordertype*1
+                                print('point1',str(int(api.pointscount*api.deltaP)).zfill(4))
+                                lastx = api.fangjuanL
+                                api.numNow = str(int(api.pointscount*api.deltaP)).zfill(4)
+                                api.LCamera = int(float(api.numNow)) - api.ordertype*(api.LView/2 - api.LView*float(msagint[0])/api.pixX - api.timeDelay*api.speedNow/60)
+                                api.lengthDelta = msagint[tt+4] - api.ordertype*api.LCamera
+                            else:
+                                deltax = abs(api.fangjuanL - lastx)                 #与上一个标的距离
+                                if deltax >= (api.deltaP*2/3):                  #距离大于标志间距的2/3才可能是正确的标
+                                    if deltax%api.deltaP >= (api.deltaP/2):
+                                        e = api.deltaP*(deltax//api.deltaP+1)-deltax
+                                    else:
+                                        e = deltax-api.deltaP*(deltax//api.deltaP)
+                                    if abs(e) <= 0.4*api.deltaP:                             #两个标的距离与附近的5的倍数之间的差值(用来判断当前面积是阴影还是真的标)
+                                        if deltax%api.deltaP >= (api.deltaP/2):
+                                            api.pointscount = api.pointscount + api.ordertype*(round(deltax)//api.deltaP)    #中间漏掉的点可以补回来
+                                            api.numNow = str(int(api.pointscount*api.deltaP)).zfill(4)
+                                            api.LCamera = int(float(api.numNow)) - api.ordertype*(api.LView/2 - api.LView*float(msagint[0])/api.pixX - api.timeDelay*api.speedNow/60)
+                                            api.lengthDelta = msagint[tt+4] - api.ordertype*api.LCamera
+                                            print('point2',str(int(api.pointscount*api.deltaP)).zfill(4))
+                                        else:
+                                            api.pointscount = api.pointscount + api.ordertype*(round(deltax)//api.deltaP)
+                                            api.numNow = str(int(api.pointscount*api.deltaP)).zfill(4)
+                                            api.LCamera = int(float(api.numNow)) - api.ordertype*(api.LView/2 - api.LView*float(msagint[0])/api.pixX - api.timeDelay*api.speedNow/60)
+                                            api.lengthDelta = msagint[tt+4] - api.ordertype*api.LCamera
+                                            print('point3',str(int(api.pointscount*api.deltaP)).zfill(4))
+                                        lastx = api.fangjuanL
+                        arealast = areanow
+                        # api.numNow = str(int(api.pointscount*api.deltaP)).zfill(4)
+                    
+                    elif api.modetype == 1:     #字符识别
+                        msg = 'MR'
+                        msagint = []
+                        for i in range(tt):
+                            msg += ',#L0000[' + str(i) + ']'
+                        for i in range(tt+7):
+                            msagint.append(0)
+                        # qq = (time.time())
+                        msg = bytes(msg+'\r',encoding="utf-8")
+                        try:
+                            client2.send(msg)
+                            msag = client2.recv(4096).decode('utf-8')
+                        except ConnectionResetError:
+                            time.sleep(2)
+                            print('try again')
+                            break
+                        msag = msag.split(',')
+                        # print(msag)
+                        msagint[tt+1] = api.speedNow
+                        api.LCamera = (api.fangjuanL - api.lengthDelta) * api.ordertype
+                        msagint[tt+2] = api.lengthAct
+                        msagint[tt+3] = api.speedJog
+                        msagint[tt+4] = api.fangjuanL
+                        # print('length',api.lengthAct,api.LCamera)
+                        
+                        if len(msag)>=tt:
+                            for i in range(tt):
+                                if i == 0:
+                                    # msagint[i] = int(msag[i+1][10])
+                                    msagint[i] = float(re.findall(r"\d+\.?\d*", msag[i+1])[0])
+                                elif (i > 0)&(i <= 4):
+                                    msagint[i] = int(msag[i+1][9]+msag[i+1][10])
+                                    msagint[i] = chr(msagint[i])
+                                elif i > 4:
+                                    msagint[i] = float(re.findall(r"\d+\.?\d*", msag[i+1])[0])
+                        # print(msagint)
+                        if firstpush:
+                            if ((msagint[1] != ' ')&(msagint[2] != ' ')&(msagint[3] != ' ')&(msagint[4] != ' ')):   
+                                if ((msagint[1] != '\x00')&(msagint[2] != '\x00')&(msagint[3] != '\x00')&(msagint[4] != '\x00')&(msagint[5] != 0)):
+                                    firstpush = False  
+                                    msagint[tt] = 'correct'
+                                    # print('firstpush done!')
+                                    if api.pointscount > 0:             #第一个点在面积检测数过了，要减掉；如果第一次点击图像采集直接进入了字符识别则不用减
+                                        api.pointscount -= 1
+                                    lastmsag = msagint[:]  
+                                    sparelast = msagint[:]
+                        
+                        t = time.time()
+                        t1 = datetime.datetime.now()
+                        t1 = t1.strftime('%Y/%m/%d/%H:%M:%S')
+                        t2 = str('%.3f'%(t-int(t)))
+                        t3 = t1 + t2[1:5]
+                        msagint[tt+5] = ('{},{},{}'.format(api.stopStack[-1][0],api.stopStack[-1][1],api.stopStack[-1][2])) if (len(api.stopStack) > 0) else -1
+                        msagint[tt+6] = t3
+
+                        if msagint[tt] != 'correct':
+                            if (abs(msagint[5] - msagint[6]) >= 40) & (abs(msagint[5] - msagint[6]) <= 60):
+                                if (str(msagint[1]).isnumeric() & str(msagint[2]).isnumeric() & str(msagint[3]).isnumeric() & (str(msagint[4]).isnumeric()|(msagint[4]==' '))):
+                                    msagint[tt] = judgeNum()
+                        if msagint[tt] == 'correct':
+                            # api.pointscount += abs(int(msagint[1]+msagint[2]+msagint[3]+msagint[4])-int(lastmsag[1]+lastmsag[2]+lastmsag[3]+lastmsag[4]))
+                            lastmsag = msagint[:]
+                            sparelast = msagint[:]
+                            # api.pointscount += 1
+                            api.numNow = (msagint[1]+msagint[2]+msagint[3]+msagint[4]).zfill(4)
+                            api.LCamera = int(api.numNow) - api.ordertype*(api.LView/2 - api.LView*float(msagint[0])/api.pixX - api.timeDelay*api.speedNow/60)
+                            api.lengthDelta = msagint[tt+4] - api.ordertype*api.LCamera
+
+                            # renew = pd.DataFrame([{'lastNum':api.numNow, 'lengthDelta':api.lengthDelta, 'ordertype':api.ordertype, \
+                            #                         'cameraPos':api.cameraPos, 'biaoliInverseFlag':api.biaoliInverseFlag}])
+                            # renew.to_csv(tempPath,mode='w',index=False,header=True)
+                            saveTempData()
+                            renewTargetsInStack()
+                            api.Meters_NextFlaw = api.stopStack[-1][1]
+                            client.write_registers (values=inverse(api.Meters_NextFlaw), unit=2, address=192, data_format='!f')
+                            print('num:',api.numNow)
+                            # print(msagint)
+                            lastx = api.fangjuanL
+
+                        elif msagint[tt] == 'Error':            #如果某一个标是错的，可以利用后面连续正确的标进行修正
+                            sparestr = str(sparelast[1]+sparelast[2]+sparelast[3]+sparelast[4])
+                            sparenum = int(sparestr.replace(' ',''))
+                            nowstr = str(msagint[1]+msagint[2]+msagint[3]+msagint[4])
+                            nownum = int(nowstr.replace(' ',''))
+                            deltaL = abs(msagint[tt+4]-sparelast[tt+4])  
+                            laststr = str(lastmsag[1]+lastmsag[2]+lastmsag[3]+lastmsag[4])
+                            lastnum = int(laststr.replace(' ',''))    
+                            if lastnum != sparenum:                          
+                                if (deltaL > (abs(nownum-sparenum)*((api.deltaP*0.6))))&(deltaL < (abs(nownum-sparenum)*(api.deltaP*1.4))):
+                                    msagint[tt] = 'correct'
+                                    lastmsag = msagint[:]
+                            sparelast = msagint[:]
+
+                        line = [total] + msagint
+                        total += 1
+                        lines.append(line)
+                        # csv.writer(f).writerow(lines)
+                    if api.photoclose == 1:
+                        break
+                    microTimer(2)
+                csv.writer(f).writerows(lines)
+                if api.photoclose == 1:
+                    break
+        # client2.send(bytes('MW,#L0002,0\r',encoding='utf-8'))
+        client2.close()
+
+    def sendmode(self):
+        mode0 = 'MW,#L0002,' + str(api.modetype)
+        mode0 = bytes(mode0+'\r',encoding='utf-8')
+        client2.send(mode0)
+
+
+class Api:                                 #仅用于设定全局变量
+    def __init__(self):
+        self.b_start = False        #False停止，True启动
+        self.b_firststart = True    #记录首次启动
+        self.state = 0              #0保持，1升速，2降速,3停止
+        self.Accelerate_time = 0    #升速时间
+        self.Slow_time = 0          #降速时间
+        self.Stop_time = 0          #停止时间
+        self.aUp =  0.1          # 升速的加速度
+        self.aDown = 0.1
+        self.Up_D_Fj = 0            #上下放卷类型：1上放卷，2下放卷
+        self.S_D_side = 0           #单双边放卷类型：1单边，2双边
+        self.Mo_WidthUp = 0         #上隔膜宽度
+        self.Mo_WidthDown = 0       #下隔膜宽度
+        self.Mo_thickUp = 0         #上隔膜厚度
+        self.Mo_thickDown = 0       #下隔膜厚度
+        self.xintong_widthUp = 0    #上筒芯宽度
+        self.xintong_widthDown = 0  #下筒芯宽度
+        self.speedNow = 0           #当前速度
+        self.SpeedLmitHigh = 0      #速度设定值高速
+        self.SpeedLmitLow = 0       #速度设定值低速
+        self.houshoujuanR = 0       #后收卷半径
+        self.QianshoujuanR = 0      #前收卷半径
+        self.LengthSum = 0          #收卷总长
+        self.lengthAct = 0          #实际长度
+        self.lengthSet = 0          #预设长度
+        self.Z1_Z2_back = 0         #后臂纸筒：3寸，6寸
+        self.Z1_Z2_front = 0        #前臂纸筒：3寸，6寸
+        self.badMetersDone = []     #当前位置缺陷是否已处理
+        self.badMeters = []         #缺陷数据库
+        self.badMetersX = []        #缺陷x坐标
+        self.badPics = []           #缺陷部位图像
+        self.badPoint = 0           #缺陷位置指针
+        self.flawPoint = 0          #缺陷位置编号
+        self.zhengfan = []          #正反面
+        self.command = 0            #指令1
+        self.command2 = 0           #指令2
+        self.command3 = 0           #指令3
+        self.command4 = 0           #指令4
+        self.buttonSend = 0         #按键指令
+        self.commandList = [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],   #指令数组1``
+                            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]]   #指令数组2
+        self.commandList3 = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]   #指令数组3
+        self.commandList4 = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]   #指令数组4
+        self.buttonList = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]     #按键数组
+        self.deltaVUp = 0           #升速deltaV
+        self.deltaVDown = 0         #降速deltaV
+        self.deltaVStop = 0         #停止deltaV
+        self.SF_Md0 = 0             #上放卷Md0
+        self.SF_Md1 = 0             #上放卷Md1
+        self.SF_Md2 = 0             #上放卷Md2
+        self.XF_Md0 = 0             #下放卷Md0
+        self.XF_Md1 = 0             #下放卷Md1
+        self.XF_Md2 = 0             #下放卷Md2
+        self.YS_Md0 = 0             #右收卷Md0
+        self.YS_Md1 = 0             #右收卷Md1
+        self.YS_Md2 = 0             #右收卷Md2
+        self.starttime = 0          #开始时间
+        self.endtime = 0            #结束时间
+        self.stateConfirm = 0       #plc状态确认
+        self.dataclose = 0          #数据保存退出标志
+        self.photoclose = 0         #图像采集退出标志
+        self.readPLCclose = 0       #读取PLC数据退出标志
+        self.sendPLCclose = 0       #发送PLC数据退出标志
+        self.showPicClose = 0       #图像显示退出标志
+        self.modetype = 0           #拍摄模式，0面积判断，1字符识别
+        self.jimitingji = 0         #记米停机
+        self.shoujuanR = 0          #收卷半径
+        self.fangjuanFSetUp = 0     #上放卷张力设定
+        self.fangjuanActFUp = 0     #上放卷实际张力
+        self.fangjuanFSetDown = 0   #下放卷张力设定
+        self.fangjuanActFDown = 0   #下放卷实际张力
+        self.fangjuanRUp = 0        #上放卷半径
+        self.fangjuanRDown = 0      #下放卷半径
+        self.avetension = 0         #平均张力
+        self.ordertype = -1          #升降序类型，默认降序
+        self.pointscount = 0        #统计点数
+        self.oriLength = 0
+        self.lengthDelta = 0        #读取米长与带子米长的差值
+        self.lengthReal = 0         #修正后的米长
+        self.lengthRead = 0         #读取的米长
+        self.speedRead = 0          #读取的速度
+        self.firstpoint = 0         #读到的第一个标
+        self.shoujuanUpQiya = 0     #上收卷气压
+        self.shoujuanDownQiya = 0   #下收卷气压
+        self.jogspeed = 0           #点动速度
+        self.ShangSJTension = 0     #上收卷张力
+        self.XiaSJTension = 0       #下收卷张力
+        self.totalMeter = 0         #设备运行总米长
+        self.lights1 = []
+        self.lights2 = []
+        self.lights3 = []
+        self.SpeedLmitHighRead = 0
+        self.SpeedLmitLowRead = 0
+        self.lengthSetRead = 0
+        self.xintong_widthUpRead = 0
+        self.xintong_widthDownRead = 0
+        self.fangjuanFSetUpRead = 0
+        self.fangjuanFSetDownRead = 0
+        self.Mo_WidthUpRead = 0
+        self.Mo_WidthDownRead = 0
+        self.Mo_thickUpRead = 0
+        self.Mo_thickDownRead = 0
+        self.xintongTypeUp = 0
+        self.xintongTypeDown = 0
+        self.moTypeUp = 0
+        self.moTypeDown = 0
+        # self.No_NextFlaw = 0        #前方瑕疵号
+        self.Amount_LeftFlaw = 0    #剩余瑕疵数
+        self.Meters_NextFlaw = 0    #瑕疵位置米数
+        self.offsetFront = 0
+        self.offsetBack = 0
+        self.jiedaijinchi = 0       #接带进尺
+
+        #datacollect
+        self.Omega_Axis1_REAL = 0
+        self.Position_Axis1_Act_REAL = 0
+        self.Torque_Axis1_Act_REAL = 0
+        self.Omega_Axis2_REAL = 0
+        self.Position_Axis2_Act_REAL = 0
+        self.Torque_Axis2_Act_REAL = 0
+        self.Omega_Axis3_REAL = 0
+        self.Position_Axis3_Act_REAL = 0
+        self.Torque_Axis3_Act_REAL = 0
+        self.Omega_Axis6_REAL = 0
+        self.Position_Axis6_Act_REAL = 0
+        self.Torque_Axis6_Act_REAL = 0
+        self.Omega_Axis8_REAL = 0
+        self.Position_Axis8_Act_REAL = 0
+        self.Torque_Axis8_Act_REAL = 0
+        self.buttonCollect = 0
+        self.QXlist = [0]*52
+        self.MXlist = [[0]*16]*6         # MX寄存器
+        self.didaoDingWei = 0       # 底刀定位调整
+        self.Meters_Stop = 0        # 点动停机米数
+        self.speedJog = 0           # 点动停机速度
+        self.fangjuanSpeedRatio = 0 # 放卷牵引速比
+        self.tongkuanUp = 0         # 筒宽上
+        self.tongkuanDown = 0       # 筒宽下
+        self.shoujuanFSetUp = 0     # 收卷张力设定上
+        self.shoujuanFSetDown = 0   # 收卷张力设定下
+        self.zhuiduUp = 0           # 锥度上
+        self.zhuiduDown = 0         # 锥度下
+        self.circlesUp = 0          # 滑差环数上
+        self.circlesDown = 0        # 滑差环数下
+        self.xintongSizeUp = 0      # 芯筒尺寸上
+        self.xintongSizeDown = 0    # 芯筒尺寸下
+        self.alarmR = 0             # 放卷报警半径
+        self.fangjuanL = 0          # 放卷长度
+        self.cameraPos = 1          # 相机位置，0上方，1下方，默认安装在下方
+
+        self.yagunBackUp = 0        # 压辊后退上
+        self.yagunBackDown = 0      # 压辊后退下
+        self.targetUp = 0           # 目标值上
+        self.targetDown = 0         # 目标值下
+
+        #绘制曲线用
+        # data = np.loadtxt('data20211102_2.txt')
+        # length_data = len(data)
+        self.xData = np.linspace(0,99,100)
+        self.containerData1 = [0]*100
+        self.containerData2 = [0]*100
+        self.containerData3 = [0]*100
+        self.containerData4 = [0]*100
+        self.containerData5 = [0]*100
+        self.containerData6 = [0]*100
+        self.yData1 = [0]*100
+        self.yData2 = [0]*100
+        self.yData3 = [0]*100
+        self.yData4 = [0]*100
+        self.yData5 = [0]*100
+        self.yData6 = [0]*100
+        self.receive_count=0
+        self.dataSaveFlag = 0
+
+        #相机相关
+        self.deltaP = 5      # 两个标志间的距离
+        self.LSend = 0          # 发送给PLC的缺陷停机位置
+        self.LCamera = 0        # 相机正下方所对应的米长
+        self.LView = 0.165        # 相机视野范围，m
+        self.LJiedai = 3.62209  # 相机正下方到接带处中间位置的距离，m;拍摄反面时，相机会向后移动0.0978m
+        self.pixX = 2400        # 相机x方向总像素数
+        self.timeDelay = 0.07   # 相机系统时延
+        self.numNow = ''        # 当前读码结果
+        self.jiedaiNow = 0      # 接带处的当前位置
+        self.view1now = 0       
+        self.view2now = 0
+        self.knife1now = 0
+        self.knife2now = 0
+        self.wind1now = 0
+        self.wind2now = 0
+        self.Lcut = 0           # 缺陷裁剪长度
+
+        self.uiEA = 0           # 是否允许界面操作
+
+        #缺陷处理弹窗相关
+        self.dealtype = 0       # 对缺陷的处理类型：0不处理，1确认，2裁剪，3双面贴胶，4表面贴胶，5里面贴胶
+        self.dealDoneFlag = 0   # 对此次停机处理是否已经完成
+        self.stopTypeNames = ['第一观察区','第二观察区','切刀后1贴标区','切刀后2贴标区','上收卷','下收卷']
+        self.stopStack = []     # 停机位置栈，进栈元素为列表[瑕疵编号，停机位置，第m个停机点]，其中
+                                # m = 0观察点1，1观察点2，2切刀上停机，3切刀下停机，4上收卷停机，5下收卷停机
+        self.lastStackPop = []  # 记录上次从栈内pop的数据
+        self.cam2view = [[1.11167,3.11819],[1.11167-0.0978,3.11819-0.0978]]   # [[上相机到第一观察区,上相机到第二观察区]],[下相机到第一观察区,下相机到第二观察区]]
+        self.cam2knife = [[7.65229+0.015,7.94342-0.035],[7.65229-0.0978+0.015,7.94342-0.0978-0.035]]  # [[上相机到切刀后上收卷停机,上相机到切刀后下收卷停机],[下相机到切刀后上收卷停机,下相机到切刀后下收卷停机]]
+        self.cam2wind1 = [[8.37763,8.26452],[8.37763-0.0978,8.26452-0.0978]]  # [[上相机到上收卷之前，上相机到下收卷之前],[下相机到上收卷之前，下相机到下收卷之前]]
+        self.flawNums = []      # 瑕疵文件里的瑕疵编号
+
+        self.biaoliInverseFlag = 0  # 此卷膜料表面与里面是否反了
+        self.findPoint = {}     # 找到这个缺陷是表格里的第几个
+        self.firstUpOrDown = 0  # 1工位在0上收卷还是1下收卷
+        self.shoujuanBorders = []   # 收卷每个小卷的边界坐标
+        self.shoujuanWidths = []    # 收卷每个小卷的宽度
+
+        #读取上次关机前的内容
+        tempData = pd.read_csv(tempPath)
+        self.numNow = str(int(tempData['lastNum'][0])).zfill(4)
+        self.lengthDelta = float(tempData['lengthDelta'][0])
+        self.ordertype = int(tempData['ordertype'][0])
+        self.cameraPos = int(tempData['cameraPos'][0])
+        self.biaoliInverseFlag = int(tempData['biaoliInverseFlag'][0])
+
+class Ui_lineWindow(object):               #绘制曲线的界面布局
+    def setupUi(self, MainWindow):
+        MainWindow.setObjectName("MainWindow")
+        MainWindow.resize(1000, 786)
+        self.centralwidget = QtWidgets.QWidget(MainWindow)
+        self.centralwidget.setObjectName("centralwidget")
+        self.showLine = QtWidgets.QLabel(self.centralwidget)
+        self.showLine.setGeometry(QtCore.QRect(30, 40, 72, 15))
+        self.showLine.setObjectName("showLine")
+        self.Velocity = QtWidgets.QCheckBox(self.centralwidget)
+        self.Velocity.setGeometry(QtCore.QRect(110, 20, 71, 41))
+        self.Velocity.setObjectName("Velocity")
+        self.Tension1 = QtWidgets.QCheckBox(self.centralwidget)
+        self.Tension1.setGeometry(QtCore.QRect(210, 20, 81, 41))
+        self.Tension1.setObjectName("Tension1")
+        self.Radius1 = QtWidgets.QCheckBox(self.centralwidget)
+        self.Radius1.setGeometry(QtCore.QRect(320, 20, 81, 41))
+        self.Radius1.setObjectName("Radius1")
+        self.verticalLayoutWidget = QtWidgets.QWidget(self.centralwidget)
+        self.verticalLayoutWidget.setGeometry(QtCore.QRect(10, 100, 980, 641))
+        self.verticalLayoutWidget.setObjectName("verticalLayoutWidget")
+        self.PicLayout = QtWidgets.QVBoxLayout(self.verticalLayoutWidget)
+        self.PicLayout.setContentsMargins(0, 0, 0, 0)
+        self.PicLayout.setObjectName("PicLayout")
+        # self.dataSave = QtWidgets.QPushButton(self.centralwidget)
+        # self.dataSave.setGeometry(QtCore.QRect(420, 40, 75, 23))
+        # self.dataSave.setObjectName("dataSave")
+        self.Tension2 = QtWidgets.QCheckBox(self.centralwidget)
+        self.Tension2.setGeometry(QtCore.QRect(210, 50, 81, 41))
+        self.Tension2.setObjectName("Tension2")
+        self.meterLong = QtWidgets.QCheckBox(self.centralwidget)
+        self.meterLong.setGeometry(QtCore.QRect(110, 50, 71, 41))
+        self.meterLong.setObjectName("meterLong")
+        self.Radius2 = QtWidgets.QCheckBox(self.centralwidget)
+        self.Radius2.setGeometry(QtCore.QRect(320, 50, 81, 41))
+        self.Radius2.setObjectName("Radius2")
+        MainWindow.setCentralWidget(self.centralwidget)
+        self.menubar = QtWidgets.QMenuBar(MainWindow)
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 680, 22))
+        self.menubar.setObjectName("menubar")
+        MainWindow.setMenuBar(self.menubar)
+        self.statusbar = QtWidgets.QStatusBar(MainWindow)
+        self.statusbar.setObjectName("statusbar")
+        MainWindow.setStatusBar(self.statusbar)
+
+        self.retranslateUi(MainWindow)
+        QtCore.QMetaObject.connectSlotsByName(MainWindow)
+
+    def retranslateUi(self, MainWindow):
+        _translate = QtCore.QCoreApplication.translate
+        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
+        self.showLine.setText(_translate("MainWindow", "曲线显示"))
+        self.Velocity.setText(_translate("MainWindow", "实际速度"))
+        self.Tension1.setText(_translate("MainWindow", "上放卷张力"))
+        self.Radius1.setText(_translate("MainWindow", "上放卷半径"))
+        # self.dataSave.setText(_translate("MainWindow", "数据保存"))
+        self.Tension2.setText(_translate("MainWindow", "下放卷张力"))
+        self.meterLong.setText(_translate("MainWindow", "实际长度"))
+        self.Radius2.setText(_translate("MainWindow", "下放卷半径"))
+
+
+class MyGraphWindow(QtWidgets.QMainWindow,Ui_lineWindow):   #绘制曲线窗口的函数
+    def __init__(self):
+        super(MyGraphWindow,self).__init__()
+        self.setupUi(self)
+        self.p1 = self.setP1ui()
+        self.p2 = self.setP2ui()
+        self.p3 = self.setP3ui()
+        self.p4 = self.setP4ui()
+        self.p5 = self.setP5ui()
+        self.p6 = self.setP6ui()
+        def aa():
+            yData1 = api.containerData1 if self.Velocity.isChecked() else ([0]*100)
+            yData2 = api.containerData2 if self.Tension1.isChecked() else ([0]*100)
+            yData3 = api.containerData3 if self.Radius1.isChecked() else ([0]*100)
+            yData4 = api.containerData4 if self.meterLong.isChecked() else ([0]*100)
+            yData5 = api.containerData5 if self.Tension2.isChecked() else ([0]*100)
+            yData6 = api.containerData6 if self.Radius2.isChecked() else ([0]*100)
+
+            self.p1.plot(api.xData,yData1,pen='g',name='实际速度',clear=True)
+            self.p2.plot(api.xData,yData2,pen='y',name='上放卷张力',clear=True)
+            self.p3.plot(api.xData,yData3,pen='g',name='上放卷半径',clear=True)
+            self.p4.plot(api.xData,yData4,pen='y',name='实际长度',clear=True)
+            self.p5.plot(api.xData,yData5,pen='g',name='下放卷张力',clear=True)
+            self.p6.plot(api.xData,yData6,pen='y',name='下放卷半径',clear=True)
+            # print('*******')
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(aa)
+        self.timer.start(100)
+    global win
+    win = pg.GraphicsLayoutWidget()
+
+    def setP1ui(self):
+        pg.setConfigOptions(antialias=True)
+        self.PicLayout.addWidget(win)
+        global p1
+        p1 =win.addPlot(title='实际速度')
+        p1.setLabel('left',text='vel',color='#ffffff')
+        p1.showGrid(x=True,y=True)
+        p1.setLogMode(x=False,y=False)
+        # p1.setLabel('bottom',text='time',units='s')
+        return p1
+    def setP2ui(self):
+        pg.setConfigOptions(antialias=True)
+        self.PicLayout.addWidget(win)
+        global p2
+        p2 =win.addPlot(title='上放卷张力')
+        p2.setLabel('left',text='tensionUp',color='#ffffff')
+        p2.showGrid(x=True,y=True)
+        p2.setLogMode(x=False,y=False)
+        # p2.setLabel('bottom',text='time',units='s')
+        return p2
+    def setP3ui(self):
+        pg.setConfigOptions(antialias=True)
+        self.PicLayout.addWidget(win)
+        global p3
+        p3 =win.addPlot(title='上放卷半径')
+        p3.setLabel('left',text='radiusUp',color='#ffffff')
+        p3.showGrid(x=True,y=True)
+        p3.setLogMode(x=False,y=False)
+        # p3.setLabel('bottom',text='time',units='s')
+        return p3
+    def setP4ui(self):
+        pg.setConfigOptions(antialias=True)
+        win.nextRow()
+        self.PicLayout.addWidget(win)
+        global p4
+        p4 =win.addPlot(title='实际长度')
+        p4.setLabel('left',text='length',color='#ffffff')
+        p4.showGrid(x=True,y=True)
+        p4.setLogMode(x=False,y=False)
+        # p4.setLabel('bottom',text='time',units='s')
+        return p4
+    def setP5ui(self):
+        pg.setConfigOptions(antialias=True)
+        self.PicLayout.addWidget(win)
+        global p5
+        p5 =win.addPlot(title='下放卷张力')
+        p5.setLabel('left',text='tensionDown',color='#ffffff')
+        p5.showGrid(x=True,y=True)
+        p5.setLogMode(x=False,y=False)
+        # p5.setLabel('bottom',text='time',units='s')
+        return p5
+    def setP6ui(self):
+        pg.setConfigOptions(antialias=True)
+        self.PicLayout.addWidget(win)
+        global p6
+        p6 =win.addPlot(title='下放卷半径')
+        p6.setLabel('left',text='radiusDown',color='#ffffff')
+        p6.showGrid(x=True,y=True)
+        p6.setLogMode(x=False,y=False)
+        # p6.setLabel('bottom',text='time',units='s')
+        return p6
+    
+    def createDataSave(self):       # 数据保存
+        api.dataSaveFlag = 1 - api.dataSaveFlag
+        if api.dataSaveFlag == 1:
+            api.dataclose = 0
+            thread1 = dataThread(1,'Thread1',0)
+            print('保存数据开')
+            thread1.start()
+        elif api.dataSaveFlag == 0:
+            api.dataclose = 1
+            print('保存数据关')
+
+
+class myMainWindow(QtWidgets.QMainWindow,Ui_MainWindow):    #主界面的函数
+    def __init__(self):
+        super(myMainWindow,self).__init__()
+        self.setupUi(self)
+        makeDecision(updateFlawFile(flawFileFolderPath) + '\\ErrorData.csv')
+        if api.flawPoint in api.findPoint.keys():
+            api.badPoint = api.findPoint[api.flawPoint]
+        self.dataShow()
+        # self.timer500 = QtCore.QTimer()
+        # self.timer500.timeout.connect(self.continueShow)
+        # self.timer500.start(500)
+        # self.timer100 = QtCore.QTimer()
+        # self.timer100.timeout.connect(self.checkChange)
+        # self.timer100.start(100)
+        # readDataFromPLC()
+        global last_qizhang
+        global last_flawStop
+        global now_qizhang
+        global now_flawStop
+        global qizhang_rise
+        global flaw_rise
+        now_qizhang = api.QXlist[15]
+        last_qizhang = now_qizhang
+        now_flawStop = api.MXlist[5][2]
+        last_flawStop = now_flawStop
+        qizhang_rise = 0
+        flaw_rise = 0
+        self.pushButton_23.clicked.connect(self.show_pic)           # 显示缺陷图片
+        self.pushButton_16.clicked.connect(self.createDrawLine)     # 曲线绘制
+        self.pushButton_17.clicked.connect(self.createDataSave)     # 数据保存
+        self.pushButton_19.clicked.connect(self.changeOrder)        # 切换标码升降序
+        self.pushButton_24.clicked.connect(self.openFlawFile)       # 打开缺陷文件
+        self.knifeButton.clicked.connect(self.knifeOpen)
+        self.peifangButton.clicked.connect(self.peifangOpen)
+        self.pushButton_25.clicked.connect(self.readFlawFile)       # 读取缺陷文件
+        self.pushButton_49.clicked.connect(self.openShoujuanSet)    # 打开收卷工位设置界面
+        #按键按下时触发函数
+        self.pushButton.pressed.connect(lambda:self.pressedFcn(3,13,1))
+        self.pushButton_2.pressed.connect(lambda:self.pressedFcn(0,3,0))
+        self.pushButton_3.pressed.connect(lambda:self.pressedFcn(0,5,0))
+        self.pushButton_4.pressed.connect(lambda:self.pressedFcn(1,12,0))
+        self.pushButton_5.pressed.connect(lambda:self.pressedFcn(0,6,0))
+        self.pushButton_6.pressed.connect(lambda:self.pressedFcn(0,7,0))
+        self.pushButton_7.pressed.connect(lambda:self.pressedFcn(1,7,1))
+        self.pushButton_8.pressed.connect(lambda:self.pressedFcn(0,8,0))
+        self.pushButton_9.pressed.connect(lambda:self.pressedFcn(1,15,1))
+        self.pushButton_10.pressed.connect(lambda:self.pressedFcn(3,14,1))
+        self.pushButton_11.pressed.connect(lambda:self.pressedFcn(999,1053,1))
+        self.pushButton_12.pressed.connect(lambda:self.pressedFcn(999,1054,1))
+        self.pushButton_13.pressed.connect(lambda:self.pressedFcn(3,15,1))
+        self.pushButton_14.pressed.connect(lambda:self.pressedFcn(4,2,0))
+        # self.pushButton_15.pressed.connect(lambda:self.pressedFcn(4,1,0))
+        self.pushButton_20.pressed.connect(lambda:self.pressedFcn(3,13,1))
+        self.pushButton_21.pressed.connect(lambda:self.pressedFcn(1,1,0))
+        self.pushButton_22.pressed.connect(lambda:self.pressedFcn(9,2,1))
+        #按键松开时触发函数
+        self.pushButton.released.connect(lambda:self.releasedFcn(3,13,1))
+        self.pushButton_2.released.connect(lambda:self.releasedFcn(0,3,0))
+        self.pushButton_3.released.connect(lambda:self.releasedFcn(0,5,0))
+        self.pushButton_4.released.connect(lambda:self.releasedFcn(1,12,0))
+        self.pushButton_5.released.connect(lambda:self.releasedFcn(0,6,0))
+        self.pushButton_6.released.connect(lambda:self.releasedFcn(0,7,0))
+        self.pushButton_7.released.connect(lambda:self.releasedFcn(1,7,1))
+        self.pushButton_8.released.connect(lambda:self.releasedFcn(0,8,0))
+        self.pushButton_9.released.connect(lambda:self.releasedFcn(1,15,1))
+        self.pushButton_10.released.connect(lambda:self.releasedFcn(3,14,1))
+        self.pushButton_11.released.connect(lambda:self.releasedFcn(999,1053,1))
+        self.pushButton_12.released.connect(lambda:self.releasedFcn(999,1054,1))
+        self.pushButton_13.released.connect(lambda:self.releasedFcn(3,15,1))
+        self.pushButton_14.released.connect(lambda:self.releasedFcn(4,2,0))
+        # self.pushButton_15.released.connect(lambda:self.releasedFcn(4,1,0))
+        self.pushButton_20.released.connect(lambda:self.releasedFcn(3,13,1))
+        self.pushButton_21.released.connect(lambda:self.releasedFcn(1,1,0))
+        self.pushButton_22.released.connect(lambda:self.releasedFcn(9,2,1))
+        #单选
+        self.radioButton.toggled.connect(lambda:self.radioBtnChange(1))
+        self.radioButton_3.toggled.connect(lambda:self.radioBtnChange(3))
+        self.radioButton_5.toggled.connect(lambda:self.radioBtnChange(5))
+        self.radioButton_13.toggled.connect(lambda:self.radioBtnChange(7))
+        self.radioButton_14.toggled.connect(lambda:self.radioBtnChange(7))
+        #输入
+        self.spinBox.editingFinished.connect(lambda:self.qtInput('Meters_Stop_R_G'))
+        # spinbox数组
+        self.spinBoxName = [self.spinBox,self.spinBox_3,self.spinBox_4,self.spinBox_5,self.spinBox_6,self.spinBox_7,self.spinBox_8,self.spinBox_9,\
+            self.spinBox_10,self.spinBox_11,self.spinBox_12,self.spinBox_13,self.spinBox_14,self.spinBox_15,self.spinBox_16,self.spinBox_17,self.spinBox_18,self.spinBox_19,\
+                self.spinBox_20,self.spinBox_22,self.spinBox_23,self.spinBox_24,self.spinBox_27,self.spinBox_28,self.spinBox_29,self.spinBox_25,self.spinBox_30]
+        self.displayData=[api.Meters_Stop,api.lengthSet,api.xintong_widthDown,api.fangjuanFSetDown,api.Mo_WidthDown,api.Mo_thickDown,api.tongkuanUp,api.circlesUp,\
+            api.shoujuanFSetUp,api.zhuiduUp,api.shoujuanFSetDown,api.zhuiduDown,api.circlesDown,api.tongkuanDown,api.SpeedLmitHigh,api.Accelerate_time,api.Slow_time,api.Stop_time,\
+                api.flawNums[api.badPoint],api.speedJog,api.didaoDingWei,int(api.Amount_LeftFlaw),api.badMeters[api.badPoint],api.alarmR,api.jiedaijinchi,api.deltaP,api.Meters_NextFlaw]
+        # self.spinBox_2.editingFinished.connect(self.qtInput)
+        self.spinBox_3.editingFinished.connect(lambda:self.qtInput('MeterLongSet_DWORD_GM'))
+        self.spinBox_4.editingFinished.connect(lambda:self.qtInput('D5_CoreWidth_DWORD_FromPC_GM'))
+        self.spinBox_5.editingFinished.connect(lambda:self.qtInput('D92_TensionAxis1_DWORD_FromPC_GM'))
+        self.spinBox_6.editingFinished.connect(lambda:self.qtInput('D4_DiaWidth_DWORD_FromPC_GM'))
+        self.spinBox_7.editingFinished.connect(lambda:self.qtInput('D1_DiaThick__DWORD_FromPC_GM'))
+        self.spinBox_8.editingFinished.connect(lambda:self.qtInput('H8_Axis_4_DWORD_FromPC_GM'))
+        self.spinBox_9.editingFinished.connect(lambda:self.qtInput('HuanCount_SJ_H_REAL_G'))
+        self.spinBox_10.editingFinished.connect(lambda:self.qtInput('T_g_ShouJuan_DWORD_GM'))
+        self.spinBox_11.editingFinished.connect(lambda:self.qtInput('Taper_ShouJuanRight_LREAL_G'))
+        self.spinBox_12.editingFinished.connect(lambda:self.qtInput('T_g_ShouJuanLeft_DWORD_GM'))
+        self.spinBox_13.editingFinished.connect(lambda:self.qtInput('Taper_ShouJuanLeft_LREAL_G'))
+        self.spinBox_14.editingFinished.connect(lambda:self.qtInput('HuanCount_SJ_Q_REAL_G'))
+        self.spinBox_15.editingFinished.connect(lambda:self.qtInput('H1_Axis_4_DWORD_FromPC_GM'))
+        self.spinBox_16.editingFinished.connect(lambda:self.qtInput('D93_SpeedLMT_DWORD_FromPC_GM'))
+        self.spinBox_17.editingFinished.connect(lambda:self.qtInput('TimeUp_DWORD_GM'))
+        self.spinBox_18.editingFinished.connect(lambda:self.qtInput('TimeDown_DWORD_GM'))
+        self.spinBox_19.editingFinished.connect(lambda:self.qtInput('TimeStop_DWORD_GM'))
+        self.spinBox_20.editingFinished.connect(lambda:self.qtInput('No_NextFlaw_R_G'))
+        # self.spinBox_21.editingFinished.connect(lambda:self.qtInput('D98_V_Diff_main_DWORD_FrmPC_GM'))
+        self.spinBox_22.editingFinished.connect(lambda:self.qtInput('Speed_JOG_R_G'))
+        self.spinBox_23.editingFinished.connect(lambda:self.qtInput('DiDaoDingWeiAdjust_R_G'))
+        self.spinBox_24.editingFinished.connect(lambda:self.qtInput('Amount_LeftFlaw_R_G'))
+        # self.spinBox_25.editingFinished.connect(lambda:self.qtInput(''))
+        self.spinBox_30.editingFinished.connect(lambda:self.qtInput('Meters_NextFlaw_R_G'))
+        self.spinBox_28.editingFinished.connect(lambda:self.qtInput('D98_3RadiusTingJi_Delta_DWORD_GM'))
+        self.spinBox_29.editingFinished.connect(lambda:self.qtInput('Meters_Stop_axis2_R_G'))
+        # self.textEdit_2.editingFinished.connect(lambda:self.qtInput('OffsetLen_Front_R_G'))
+        self.textEdit_2.editingFinished.connect(lambda:self.qtInput('OffsetLen_Front_R_G'))
+        self.textEdit_3.editingFinished.connect(lambda:self.qtInput('OffsetLen_Back_R_G'))
+        if api.uiEA:
+            self.checkBox.setChecked(True)
+        else:
+            self.checkBox.setChecked(False)
+        if api.cameraPos == 0:
+            self.radioButton_13.setChecked(True)
+        elif api.cameraPos == 1:
+            self.radioButton_14.setChecked(True)
+        self.checkBox_3.setChecked(api.biaoliInverseFlag)
+        self.checkBox.toggled.connect(self.uiEnable)
+        self.checkBox_3.toggled.connect(self.biaoliInverse)
+        self.spinBox_26.editingFinished.connect(self.cutFinished)
+        self.ChuandaiPic.clicked.connect(self.ChuandaiPicOpen)
+        
+        self.drawLineFlag = 0
+        self.newTape = 1        #新料
+        self.showDataCount = 0
+        self.knifeSetFlag = 0
+        self.peifangSetFlag = 0
+        self.mainState = 0      #主循环状态
+        self.lastState = 0      #主循环上一个状态
+        self.qianOrHou = 0      #当前位置在当前缺陷前还是后，前1后0
+        self.numPush = ''       #打开气胀或缺陷检测时的标码
+        
+        print('当前文件内瑕疵位置：',api.badMeters)
+
+        # f = open(readPath + '\\stopStack.csv', 'r', newline='')
+        # reader = csv.reader(f)
+        # for i in reader:
+        #     api.stopStack.append([int(i[0]), float(i[1]), int(i[2])])
+
+        self.dataShow()
+        self.timer200 = QtCore.QTimer()
+        self.timer200.timeout.connect(self.mainTimer200)
+        self.timer200.start(200)
+    def ChuandaiPicOpen(self):
+        try:
+            # os.rename('PA1013穿带原理图.png','PA1013穿带原理图.png')
+            os.startfile(chuandaiPath)
+        except:
+            msg = QMessageBox(QMessageBox.Warning,'提示','穿带图不存在')
+            msg.exec_()    
+
+    def cutFinished(self):      #输入裁剪长度
+        api.Lcut = self.spinBox_26.value()
+        api.lengthDelta += api.Lcut
+    
+    def uiEnable(self):         #是否允许界面操作
+        if self.checkBox.isChecked():
+            api.uiEA = 1
+        else:
+            api.uiEA = 0
+    
+    def biaoliInverse(self):    #膜料表里面是否反向
+        if self.checkBox_3.isChecked():
+            api.biaoliInverseFlag = 1
+        else:
+            api.biaoliInverseFlag = 0
+        saveTempData()
+
+    def mainTimer200(self):     # 主循环
+        # readDataFromPLC()
+        self.continueShow()
+        self.displayData=[api.Meters_Stop,api.lengthSet,api.xintong_widthDown,api.fangjuanFSetDown,api.Mo_WidthDown,api.Mo_thickDown,api.tongkuanUp,api.circlesUp,\
+            api.shoujuanFSetUp,api.zhuiduUp,api.shoujuanFSetDown,api.zhuiduDown,api.circlesDown,api.tongkuanDown,api.SpeedLmitHigh,api.Accelerate_time,api.Slow_time,api.Stop_time,\
+                int(api.flawNums[api.badPoint]),api.speedJog,api.didaoDingWei,int(api.Amount_LeftFlaw),api.badMeters[api.badPoint],api.alarmR,api.jiedaijinchi,api.deltaP,api.Meters_NextFlaw]
+        for k in range(len(self.spinBoxName)):
+            if self.spinBoxName[k].hasFocus():
+                # print("正在输入")
+                pass
+            else:
+                self.spinBoxName[k].setValue(self.displayData[k])
+        global last_qizhang
+        global last_flawStop
+        global now_qizhang
+        global now_flawStop
+        global qizhang_rise
+        global flaw_rise
+
+        if self.mainState == 0:     #准备阶段
+            if self.mainState != self.lastState:
+                print('mainState:',self.mainState)
+            self.laststate = self.mainState
+
+            now_qizhang = api.QXlist[15]
+            now_flawStop = api.MXlist[5][2]
+            # print('last',last_flawStop,'now',now_flawStop)
+            qizhang_rise = 1 if ((last_qizhang == 0)&(now_qizhang == 1)) else 0
+            flaw_rise = 1 if ((last_flawStop == 0)&(now_flawStop == 1)) else 0
+            # print('flaw rise',flaw_rise)
+            if api.MXlist[5][2]:
+                self.mainState = 1
+            elif not api.MXlist[5][2]:
+                self.mainState = 0
+                # api.badMetersDone = [0]*len(api.badMeters)
+            # last_flawStop = now_flawStop
+            last_qizhang = now_qizhang
+            last_flawStop = now_flawStop
+            
+
+        elif self.mainState == 1:   #检查是否刚打开气胀或瑕疵停机
+            if self.mainState != self.lastState:
+                print('mainState:',self.mainState)
+            self.laststate = self.mainState
+            if qizhang_rise or flaw_rise:
+                self.mainState = 11
+            else:
+                self.mainState = 0
+            
+        elif self.mainState == 11:  #检查当前缺陷位置
+            if self.laststate != self.mainState:
+                print('mainState:',self.mainState)
+            self.laststate = self.mainState 
+            
+            api.LCamera = (api.fangjuanL - api.lengthDelta) * api.ordertype
+            api.view1now = api.LCamera + api.cam2view[api.cameraPos][0]
+            api.view2now = api.LCamera + api.cam2view[api.cameraPos][1]
+            # print('v1v2',api.view1now,api.view2now,api.LCamera)
+            if len(api.stopStack) == 0:     #空栈，所有缺陷的目标停机位置进栈，排序
+                for i in range(len(api.badMeters)):
+                    if (api.zhengfan[i] == 0) or (api.zhengfan[i] == 2):
+                        if ((api.badMeters[i] - api.view1now) * api.ordertype) >= 0:
+                            # api.stopStack.append([api.flawNums[i], api.lengthAct + abs(api.badMeters[i] - api.view1now), 0])
+                            if (findGongWeiNum(api.badMetersX[i]) != -1):
+                                api.stopStack.append([api.flawNums[i], 0, 0])
+                    elif api.zhengfan[i] == 1:
+                        if ((api.badMeters[i] - api.view2now) * api.ordertype) >= 0:
+                            # api.stopStack.append([api.flawNums[i], api.lengthAct + abs(api.badMeters[i] - api.view2now), 1])
+                            api.stopStack.append([api.flawNums[i], 0, 1])
+                renewTargetsInStack()
+                # api.stopStack.sort(key = lambda x:x[1], reverse = True)
+                print('whole stack:',api.stopStack)
+                self.totalFlaws = len(api.stopStack)        #剩余缺陷总数
+                if self.totalFlaws > 0:
+                    self.popTargetPos()
+            else:                           #非空栈，则PLC内一定有一个目标停机位置，
+                if api.lengthAct > api.Meters_NextFlaw:     #如果PLC已经过了当前目标位置，则遍历栈，重新找下一个位置;否则直接升速即可
+                    if api.lengthAct >= api.stopStack[0][1]:        #如果后面没有缺陷了，直接跑完剩下的膜料
+                        # request1 = client.read_holding_registers(9,1).registers
+                        # buttonList = dec_to_binlist(request1[0],16)
+                        # buttonList[2] = 1
+                        # command = binlist_to_int(buttonList)
+                        # # if api.uiEA:
+                        # client.write_register (value=command, unit=2, address=9)    #自动关闭瑕疵停机选择   
+                        self.mainState = 0
+                    else:
+                        if api.lengthAct < api.stopStack[-1][1]:
+                            api.Meters_NextFlaw = api.stopStack[-1][1]
+                        else:
+                            for j in range(len(api.stopStack)-1):
+                                api.Meters_NextFlaw = api.stopStack[j][1]
+                                api.stopStack = api.stopStack[0:j+1]
+                                break
+                        api.badPoint = api.findPoint[api.stopStack[j][0]]
+                        self.totalFlaws = len(api.stopStack)
+                        api.Amount_LeftFlaw = self.totalFlaws
+                        client.write_registers (values=inverse(api.stopStack[-1][0]) + inverse(api.Amount_LeftFlaw) + inverse(api.Meters_NextFlaw), unit=2, address=188, data_format='!f')
+                        client.write_registers (values=inverse(api.zhengfan[api.badPoint]), unit=2, address=300, data_format='!f')
+                        # client.write_coils(50,[api.zhengfan[api.badPoint]])
+            print('delta',api.lengthDelta)
+            print('whole stack:',api.stopStack)
+            
+            self.mainState = 2
+
+        elif self.mainState == 12:
+            if self.laststate != self.mainState:
+                print('mainState:',self.mainState)
+            self.laststate = self.mainState 
+            
+            api.LCamera = (api.fangjuanL - api.lengthDelta) * api.ordertype
+            api.view1now = api.LCamera + api.cam2view[api.cameraPos][0]
+            api.view2now = api.LCamera + api.cam2view[api.cameraPos][1]
+            # print('v1v2',api.view1now,api.view2now,api.LCamera)
+            api.stopStack = []
+            for i in range(len(api.badMeters)):
+                if (api.zhengfan[i] == 0) or (api.zhengfan[i] == 2):
+                    if ((api.badMeters[i] - api.view1now) * api.ordertype) >= 0:
+                        # api.stopStack.append([api.flawNums[i], api.lengthAct + abs(api.badMeters[i] - api.view1now), 0])
+                        if (findGongWeiNum(api.badMetersX[i]) != -1):
+                            api.stopStack.append([api.flawNums[i], 0, 0])
+                elif api.zhengfan[i] == 1:
+                    if ((api.badMeters[i] - api.view2now) * api.ordertype) >= 0:
+                        # api.stopStack.append([api.flawNums[i], api.lengthAct + abs(api.badMeters[i] - api.view2now), 1])
+                        api.stopStack.append([api.flawNums[i], 0, 1])
+            renewTargetsInStack()
+            # api.stopStack.sort(key = lambda x:x[1], reverse = True)
+            print('whole stack:',api.stopStack)
+            self.totalFlaws = len(api.stopStack)        #剩余缺陷总数
+            if self.totalFlaws > 0:
+                self.popTargetPos()
+
+        elif self.mainState == 2:           #判断当前目标停机是否完成  
+            if self.laststate != self.mainState:
+                print('mainState:',self.mainState)
+            self.laststate = self.mainState 
+
+            # if 1:    
+            if api.MXlist[1][11] & (abs(api.lengthAct-api.Meters_NextFlaw)<=0.2):   #瑕疵停机已经完成
+                # api.badMetersDone[api.badPoint] = 1
+                self.flawDealWin = flawDealPopup()
+                self.flawDealWin.show()
+                self.mainState = 3
+            else:
+                pass
+            
+        elif self.mainState == 3:           #等待工人对弹窗的操作完成     
+            if self.laststate != self.mainState:
+                print('mainState:',self.mainState)
+            self.laststate = self.mainState    
+
+            if not api.dealDoneFlag:
+                pass
+            else:
+                api.dealDoneFlag = 0
+                self.mainState = 4
+        
+        elif self.mainState == 4:           #根据工人在弹窗中的操作，确定对当前停机的处理方式
+            if self.laststate != self.mainState:
+                print('mainState:',self.mainState)
+            self.laststate = self.mainState
+
+            api.lastStackPop = api.stopStack.pop()      #出栈
+            print('after pop:',api.stopStack)
+            if len(api.stopStack) > 0:          #还有剩余停机点
+                self.shoujuanPosNum = findGongWeiNum(api.badMetersX[api.findPoint[api.lastStackPop[0]]])
+                if (api.lastStackPop[2] == 0) | (api.lastStackPop[2] == 1):
+                    if self.totalFlaws > 0:
+                        self.totalFlaws -= 1
+                if api.dealtype == 0:           #不处理，直接走
+                    pass
+                elif api.dealtype == 1:         #确认，瑕疵计数
+                    pass
+                elif api.dealtype == 2:         #裁剪，接带计数
+                    pass
+                elif api.dealtype == 3:         #双面贴标，瑕疵计数，push两个停机点
+                    self.upOrDown = abs((api.firstUpOrDown - (1 - self.shoujuanPosNum%2)))  #根据x坐标判断收卷在第几工位，进而判断在上收卷还是下收卷
+                    if not self.upOrDown:       #上收卷
+                        api.stopStack.append([api.lastStackPop[0], 0, 2])
+                        api.stopStack.append([api.lastStackPop[0], 0, 4])
+                    else:                       #下收卷
+                        api.stopStack.append([api.lastStackPop[0], 0, 3])
+                        api.stopStack.append([api.lastStackPop[0], 0, 5])
+                elif api.dealtype == 4:         #表面贴标，瑕疵计数，push收卷处停机点
+                    self.upOrDown = abs((api.firstUpOrDown - (1 - self.shoujuanPosNum%2)))  #根据x坐标判断收卷在第几工位，进而判断在上收卷还是下收卷
+                    if not self.upOrDown:       #上收卷
+                        api.stopStack.append([api.lastStackPop[0], 0, 4])
+                    else:                       #下收卷
+                        api.stopStack.append([api.lastStackPop[0], 0, 5])
+                elif api.dealtype == 5:         #里面贴标，瑕疵计数，push切刀处停机点
+                    self.upOrDown = abs((api.firstUpOrDown - (1 - self.shoujuanPosNum%2)))  #根据x坐标判断收卷在第几工位，进而判断在上收卷还是下收卷
+                    if not self.upOrDown:       #上收卷
+                        api.stopStack.append(api.lastStackPop[0], 0, 2)
+                    else:                       #下收卷
+                        api.stopStack.append(api.lastStackPop[0], 0, 3)
+                renewTargetsInStack()
+                self.popTargetPos()             #向PLC弹出新的目标位置
+                request1 = client.read_holding_registers(9,1).registers
+                buttonList = dec_to_binlist(request1[0],16)
+                buttonList[2] = 1
+                command = binlist_to_int(buttonList)
+            
+                client.write_register (value=command, unit=2, address=9)    #自动打开瑕疵停机选择  
+                api.dealtype = 0 
+                self.mainState = 11
+            else:                               #无其他停机点，回到初始状态，等剩余膜料跑完
+                self.mainState = 0
+
+        # print('state',self.mainState)
+
+    def popTargetPos(self):     # 向PLC发送目标停机位置
+        api.badPoint = api.findPoint[api.stopStack[-1][0]]
+        api.Meters_NextFlaw = api.stopStack[-1][1]
+        api.Amount_LeftFlaw = self.totalFlaws if (self.totalFlaws >= 0) else 0
+        client.write_registers (values=inverse(api.stopStack[-1][0]) + inverse(api.Amount_LeftFlaw) + inverse(api.Meters_NextFlaw), unit=2, address=188, data_format='!f')
+        client.write_registers (values=inverse(api.zhengfan[api.badPoint]), unit=2, address=300, data_format='!f')
+        # client.write_coils(50,[api.zhengfan[api.badPoint]])
+        api.lastStackPop = api.stopStack[-1]      #出栈
+
+    def dataShow(self):         # 显示数据
+        #spinbox
+        self.spinBox.setRange(0,10000)
+        # self.spinBox_2.setRange(0,10000)
+        self.spinBox_3.setRange(0,10000)
+        self.spinBox_4.setRange(0,10000)
+        self.spinBox_5.setRange(0,10000)
+        self.spinBox_6.setRange(0,10000)
+        self.spinBox_7.setRange(0,10000)
+        self.spinBox_8.setRange(0,10000)
+        self.spinBox_9.setRange(0,10000)
+        self.spinBox_10.setRange(0,10000)
+        self.spinBox_11.setRange(0,10000)
+        self.spinBox_12.setRange(0,10000)
+        self.spinBox_13.setRange(0,10000)
+        self.spinBox_14.setRange(0,10000)
+        self.spinBox_15.setRange(0,10000)
+        self.spinBox_16.setRange(0,10000)
+        self.spinBox_17.setRange(0,10000)
+        self.spinBox_18.setRange(0,10000)
+        self.spinBox_19.setRange(0,10000)
+        self.spinBox_20.setRange(0,100000000)
+        # self.spinBox_21.setRange(0,10000)
+        self.spinBox_22.setRange(0,10000)
+        self.spinBox_23.setRange(0,10000)
+        self.spinBox_24.setRange(0,10000)
+        self.spinBox_25.setRange(0,10000)
+        self.spinBox_26.setRange(0,10000)
+        self.spinBox_27.setRange(0,10000)
+        self.spinBox_28.setRange(0,10000)
+        self.spinBox_29.setRange(0,10000)
+        self.spinBox_30.setRange(0,10000)
+        self.textEdit_2.setRange(0,10000)
+        self.textEdit_3.setRange(0,10000)
+        self.textEdit_4.setRange(0,10000)
+
+        # for k in range(len(self.spinBoxName)):
+        #     if self.spinBoxName[k].hasFocus():
+        #         print("正在输入")
+        #     else:
+        #         self.spinBoxName[k].setValue(self.displayData[k])
+
+
+        self.textEdit_2.setValue(api.offsetFront)
+        self.textEdit_3.setValue(api.offsetBack)
+        #radioButton
+        if api.MXlist[5][1] == 0:           #上放卷
+            self.radioButton.setChecked(True)
+            self.radioButton_2.setChecked(False)
+            # print('上放卷')
+        elif api.MXlist[5][1] == 1:         #下放卷
+            self.radioButton.setChecked(False)
+            self.radioButton_2.setChecked(True)
+            # print('下放卷')
+        if api.xintongSizeUp == 0:      #上芯筒3寸
+            self.radioButton_3.setChecked(True)
+            self.radioButton_4.setChecked(False)
+        elif api.xintongSizeUp == 4:    #上芯筒6寸
+            self.radioButton_3.setChecked(False)
+            self.radioButton_4.setChecked(True)
+        if api.xintongSizeDown == 0:    #下芯筒3寸
+            self.radioButton_5.setChecked(True)
+            self.radioButton_6.setChecked(False)
+        elif api.xintongSizeDown == 4:  #下芯筒6寸
+            self.radioButton_5.setChecked(False)
+            self.radioButton_6.setChecked(True)
+        
+    def continueShow(self):
+        self.dateTimeEdit.setDateTime(QDateTime.currentDateTime())
+        #LCDNumber
+        self.lcdNumber.setPlainText(str(round(api.speedNow,2)))
+        self.lcdNumber_2.setPlainText(str(round(api.lengthAct,2)))
+        self.lcdNumber_3.setPlainText(str(round(api.LengthSum,2)))
+        self.lcdNumber_4.setPlainText(str(round(api.fangjuanRDown,2)))
+        try:
+            self.lcdNumber_5.setPlainText(str(round(api.fangjuanActFDown/api.Mo_WidthDown,2)))
+        except ZeroDivisionError:
+            self.lcdNumber_5.setPlainText(str(round(api.fangjuanActFDown,2)))
+        self.lcdNumber_6.setPlainText(str(round(api.fangjuanActFDown,2)))
+        self.lcdNumber_7.setPlainText(str(round(api.houshoujuanR,2)))   #上收卷半径
+        self.lcdNumber_8.setPlainText(str(round(api.yagunBackUp,2)))    #上跟随后退距离
+        self.lcdNumber_9.setPlainText(str(round(api.yagunBackDown,2)))  #下跟随后退距离
+        self.lcdNumber_10.setPlainText(str(round(api.QianshoujuanR,2))) #下收卷半径
+        try:
+            self.lcdNumber_11.setPlainText(str(round(api.shoujuanFSetUp/api.Mo_WidthDown,2)))
+        except ZeroDivisionError:
+            self.lcdNumber_11.setPlainText(str(round(api.shoujuanFSetUp,2)))
+        self.lcdNumber_12.setPlainText(str(round(api.targetUp,2)))
+        try:
+            self.lcdNumber_13.setPlainText(str(round(api.shoujuanFSetDown/api.Mo_WidthDown,2)))
+        except ZeroDivisionError:
+            self.lcdNumber_13.setPlainText(str(round(api.shoujuanFSetDown,2)))
+        self.lcdNumber_14.setPlainText(str(round(api.targetDown,2)))
+        self.lcdNumber_15.setPlainText(str(round(api.SpeedLmitHigh,2)))
+
+        # pushButton
+        if api.MXlist[3][13] == 1:          #换底刀
+            self.pushButton.setStyleSheet("background-color: #00ff00")
+        elif api.MXlist[3][13] == 0:
+            self.pushButton.setStyleSheet("background-color: #ffffff")
+        if api.QXlist[19] == 1:             #伺服使能
+            self.pushButton_2.setStyleSheet("background-color: #00ff00")
+        elif api.QXlist[19] == 0:
+            self.pushButton_2.setStyleSheet("background-color: #ffffff")
+        if api.MXlist[1][7] == 1:           #张力开
+            self.pushButton_7.setStyleSheet("background-color: #00ff00")
+        elif api.MXlist[1][7] == 0:
+            self.pushButton_7.setStyleSheet("background-color: #ffffff")
+        if api.MXlist[1][15] == 1:          #预收紧
+            self.pushButton_9.setStyleSheet("background-color: #00ff00")
+        elif api.MXlist[1][15] == 0:
+            self.pushButton_9.setStyleSheet("background-color: #ffffff")
+        if api.MXlist[3][14] == 1:          #上跟随关
+            self.pushButton_10.setStyleSheet("background-color: #00ff00")
+        elif api.MXlist[3][14] == 0:
+            self.pushButton_10.setStyleSheet("background-color: #ffffff")
+        if api.MXlist[3][15] == 1:          #下跟随关
+            self.pushButton_13.setStyleSheet("background-color: #00ff00")
+        elif api.MXlist[3][15] == 0:
+            self.pushButton_13.setStyleSheet("background-color: #ffffff")
+        if api.QXlist[12] == 1:             #点动
+            self.pushButton_14.setStyleSheet("background-color: #00ff00")
+        elif api.QXlist[12] == 0:
+            self.pushButton_14.setStyleSheet("background-color: #ffffff")
+        if api.QXlist[50] == 1:             #上压带
+            self.pushButton_11.setStyleSheet("background-color: #00ff00")
+        elif api.QXlist[50] == 0:
+            self.pushButton_11.setStyleSheet("background-color: #ffffff")
+        if api.QXlist[51] == 1:             #下压带
+            self.pushButton_12.setStyleSheet("background-color: #00ff00")
+        elif api.QXlist[51] == 0:
+            self.pushButton_12.setStyleSheet("background-color: #ffffff")
+        if api.MXlist[3][13] == 1:          #底刀定位停机
+            self.pushButton_20.setStyleSheet("background-color: #00ff00")
+        elif api.MXlist[3][13] == 0:
+            self.pushButton_20.setStyleSheet("background-color: #ffffff")
+        if api.MXlist[5][2] == 1:          #瑕疵停机选择
+            self.pushButton_22.setStyleSheet("background-color: #00ff00")
+        elif api.MXlist[5][2] == 0:
+            self.pushButton_22.setStyleSheet("background-color: #ffffff")
+        if self.drawLineFlag==1:
+            receive()
+        try:
+            if (api.zhengfan[api.badPoint] == 0):
+                self.textEdit.setPlainText('表面')
+            elif (api.zhengfan[api.badPoint] == 1):
+                self.textEdit.setPlainText('里面')
+            elif (api.zhengfan[api.badPoint] == 2):
+                self.textEdit.setPlainText('针孔')
+            self.textEdit_4.setValue(api.badMetersX[api.badPoint])
+        except Exception:
+            print('e',api.badPoint,api.zhengfan)
+        self.textBrowser.setText(api.numNow)
+
+        if api.ordertype == 1:
+            self.pushButton_19.setStyleSheet("background-color: #ffffff")
+            self.pushButton_19.setText(_translate("MainWindow", "升序"))
+        elif api.ordertype == -1:
+            self.pushButton_19.setStyleSheet("background-color: #00ff00")
+            self.pushButton_19.setText(_translate("MainWindow", "降序"))
+            
+
+    def pressedFcn(self,mw,mx,stay):     # 鼠标按下的函数
+        print('pressed:',mw,mx,stay)
+        if mw!=999:
+            request1 = client.read_holding_registers(mw,1).registers
+            buttonList = dec_to_binlist(request1[0],16)
+            if stay:    #如果是取反的按键
+                buttonList[mx] = 1 - buttonList[mx]
+            else:       #按1松0的按键
+                buttonList[mx] = 1
+            command = binlist_to_int(buttonList)
+            if api.uiEA:
+                client.write_register (value=command, unit=2, address=mw)  
+        elif mw==999:   #要操作的是输出继电器
+            onebit = client.read_coils(mx,1).bits
+            if stay:
+                onebit[0] = 1 - onebit[0]
+            else:
+                onebit[0] = 1
+            if api.uiEA:
+                client.write_coils(mx,onebit)
+
+    def releasedFcn(self,mw,mx,stay):    # 鼠标抬起的函数
+        print('released:',mw,mx,stay)
+        if mw!= 999:
+            request1 = client.read_holding_registers(mw,1).registers
+            buttonList = dec_to_binlist(request1[0],16)
+            if not stay:    #如果是按1松0的按键，就发个0回去
+                buttonList[mx] = 0
+                command = binlist_to_int(buttonList)
+                if api.uiEA:
+                    client.write_register (value=command, unit=2, address=mw)  
+        elif mw == 999:
+            onebit = client.read_coils(mx,1).bits
+            if not stay:
+                pass
+                if api.uiEA:
+                    client.write_coils(mx,onebit)
+
+    def radioBtnChange(self,a):
+        print(a,'is changed')
+        if a == 1:
+            if self.radioButton.isChecked():
+                print('上放卷')
+                request1 = client.read_holding_registers(9,1).registers
+                buttonList = dec_to_binlist(request1[0],16)
+                buttonList[1] = 0
+                command = binlist_to_int(buttonList)
+                if api.uiEA:
+                    client.write_register (value=command, unit=2, address=9)
+            elif self.radioButton_2.isChecked():
+                print('下放卷')
+                request1 = client.read_holding_registers(9,1).registers
+                buttonList = dec_to_binlist(request1[0],16)
+                buttonList[1] = 1
+                command = binlist_to_int(buttonList)
+                if api.uiEA:
+                    client.write_register (value=command, unit=2, address=9)
+        elif a == 3:
+            if self.radioButton_3.isChecked():
+                print('上收卷3寸')
+                if api.uiEA:
+                    client.write_registers(values=[0], unit=2, address=98, data_format='!f')
+            elif self.radioButton_4.isChecked():
+                print('上收卷6寸')
+                if api.uiEA:
+                    client.write_registers(values=inverse(4), unit=2, address=98, data_format='!f')
+        elif a == 5:
+            if self.radioButton_5.isChecked():
+                print('下收卷3寸')
+                if api.uiEA:
+                    client.write_registers(values=[0], unit=2, address=100, data_format='!f')
+            elif self.radioButton_6.isChecked():
+                print('下收卷6寸')
+                if api.uiEA:
+                    client.write_registers(values=inverse(4), unit=2, address=100, data_format='!f')
+        elif a == 7:
+            if self.radioButton_13.isChecked():
+                print('相机安装在上方')
+                api.cameraPos = 0
+            elif self.radioButton_14.isChecked():
+                print('相机安装在下方')
+                api.cameraPos = 1
+            saveTempData()
+
+    def qtInput(self,a):
+        if api.uiEA:
+            print(a,' is changed.')
+            api.Meters_Stop        = self.spinBox.value()
+            # api.SpeedLmitHigh       = self.spinBox_2.value()
+            api.lengthSet           = self.spinBox_3.value()
+            api.xintong_widthDown   = self.spinBox_4.value()
+            api.fangjuanFSetDown    = self.spinBox_5.value()
+            api.Mo_WidthDown        = self.spinBox_6.value()
+            api.Mo_thickDown        = self.spinBox_7.value()
+            api.tongkuanUp          = self.spinBox_8.value()
+            api.circlesUp           = self.spinBox_9.value()
+            api.shoujuanFSetUp      = self.spinBox_10.value()
+            api.zhuiduUp            = self.spinBox_11.value()
+            api.shoujuanFSetDown    = self.spinBox_12.value()
+            api.zhuiduDown          = self.spinBox_13.value()
+            api.circlesDown         = self.spinBox_14.value()
+            api.tongkuanDown        = self.spinBox_15.value()
+            api.SpeedLmitHigh       = self.spinBox_16.value()
+            api.Accelerate_time     = self.spinBox_17.value()
+            api.Slow_time           = self.spinBox_18.value()
+            api.Stop_time           = self.spinBox_19.value()
+            api.badPoint            = api.findPoint[self.spinBox_20.value()]
+            # api.fangjuanSpeedRatio  = self.spinBox_21.value()
+            api.speedJog            = self.spinBox_22.value()
+            api.didaoDingWei        = self.spinBox_23.value()
+            api.deltaP              = self.spinBox_25.value()
+            api.Lcut                = self.spinBox_26.value()
+            api.alarmR              = self.spinBox_28.value()
+            api.jiedaijinchi        = self.spinBox_29.value()
+        # if api.uiEA:
+            client.write_registers (values=inverse(self.sender().value()), unit=2, address=get_addr(a), data_format='!f')
+            if self.sender() == self.spinBox_20:
+                api.Meters_NextFlaw = (api.badMeters[api.badPoint] + api.lengthDelta + api.LJiedai)   #缺陷位置米数
+                if api.Meters_NextFlaw <= 0:
+                    api.Meters_NextFlaw = api.badMeters[api.badPoint]
+                api.Amount_LeftFlaw = (len(api.badMeters)-api.badPoint) if (api.ordertype == 1) else api.badPoint  #剩余缺陷数量
+                print('haisheng',api.Amount_LeftFlaw)
+                self.dataShow()
+                if len(api.stopStack) > 0:
+                    for i in range(len(api.stopStack)):
+                        if api.findPoint[api.stopStack[i][0]] > api.badPoint:
+                            api.stopStack = api.stopStack[0:i]
+                
+                client.write_registers (values=inverse(api.flawNums[api.badPoint]) + inverse(api.Amount_LeftFlaw) + inverse(api.Meters_NextFlaw), unit=2, address=188, data_format='!f')
+
+    def createDataSave(self):       # 数据保存
+        api.dataSaveFlag = 1 - api.dataSaveFlag
+        if api.dataSaveFlag == 1:
+            self.pushButton_17.setStyleSheet("background-color: #00ff00")
+            self.pushButton_17.setFont(QtGui.QFont("新宋体",10,QtGui.QFont.Bold))
+            api.dataclose = 0
+            thread1 = dataThread(1,'Thread1',0)
+            thread1.setDaemon(True)
+            print('保存数据开')
+            thread1.start()
+        elif api.dataSaveFlag == 0:
+            self.pushButton_17.setStyleSheet("background-color: #ffffff")
+            self.pushButton_17.setFont(QtGui.QFont("新宋体",10,QtGui.QFont.Bold))
+            api.dataclose = 1
+            print('保存数据关')
+
+    def createDrawLine(self):       # 曲线绘制
+        self.drawLineFlag = 1 - self.drawLineFlag
+        if self.drawLineFlag == 1:
+            self.pushButton_16.setStyleSheet("background-color: #00ff00")
+            self.pushButton_16.setFont(QtGui.QFont("新宋体",10,QtGui.QFont.Bold))
+            lineWin.show()
+            
+            print('图像绘制开')
+        elif self.drawLineFlag == 0:
+            self.pushButton_16.setStyleSheet("background-color: #ffffff")
+            self.pushButton_16.setFont(QtGui.QFont("新宋体",10,QtGui.QFont.Bold))
+            lineWin.close()
+            print('图像绘制关')
+
+    def show_pic(self):              # 显示缺陷图片
+        imagePath0 = updateFlawFile(flawPicFolderPath) + '\\{0}.bmp'.format(str(api.badPics[api.badPoint]).zfill(6))
+        print('当前第',api.badPoint)
+        print('image path',imagePath0)
+        os.startfile(imagePath0)
+    
+    def openFlawFile(self):         # 打开缺陷文件
+        flawFilePath = updateFlawFile(flawFileFolderPath) + '\\ErrorData.csv'
+        os.startfile(flawFilePath)
+    
+    def readFlawFile(self):
+        api.photoclose = 1
+        makeDecision(updateFlawFile(flawFileFolderPath) + '\\ErrorData.csv')
+        time.sleep(0.5)
+        api.photoclose = 0
+        target_host = "10.30.76.27"
+        target_port = 8500
+        global client2
+        #建立socket对象
+        socket.setdefaulttimeout(3)
+        client2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #连接客户端
+        print('正在与相机建立连接...')
+        try:
+            client2.connect((target_host,target_port))
+        except Exception:
+            print('连接失败！请检查网线连接与相机状态')
+            time.sleep(3)
+        thread3 = photoThread(3,'Thread3',0)
+        thread3.setDaemon(True)
+        thread3.start()
+        print('正在读取相机数据...')
+        self.mainState = 0
+
+    def openShoujuanSet(self):
+        self.shoujuanSetWin = shoujuanGongwei()
+        self.shoujuanSetWin.show()
+
+        # self.uu = Ui_ShouJuan()
+        # self.uu.show()
+        
+
+    def changeOrder(self):  #切换标码升降序
+        if api.ordertype == 1:
+            api.ordertype = -1
+            self.pushButton_19.setStyleSheet("background-color: #00ff00")
+            self.pushButton_19.setText(_translate("MainWindow", "降序"))
+            print('当前标码降序')
+        elif api.ordertype == -1:
+            api.ordertype = 1
+            self.pushButton_19.setStyleSheet("background-color: #ffffff")
+            self.pushButton_19.setText(_translate("MainWindow", "升序"))
+            print('当前标码升序')
+        saveTempData()
+
+    def knifeOpen(self):  #弹出刀库
+        self.knifeSetFlag = 1 - self.knifeSetFlag
+        if self.knifeSetFlag == 1:
+            self.knifeButton.setStyleSheet("background-color: #00ff00")
+            knifeWin.show()
+            # print('------------------------')
+        elif self.knifeSetFlag == 0:
+            self.knifeButton.setStyleSheet("background-color: #ffffff")
+            knifeWin.close()  
+
+    def peifangOpen(self):
+        self.peifangSetFlag = 1-self.peifangSetFlag
+        if self.peifangSetFlag == 1:
+            self.peifangButton.setStyleSheet("background-color: #00ff00")
+            peiFangWin.show()
+        elif self.peifangSetFlag == 0:
+            self.peifangButton.setStyleSheet("background-color: #ffffff")
+            peiFangWin.close()
+
+
+class myKnifeAndPeifang(QtWidgets.QMainWindow,Ui_KnifeEdit):  #刀具操作界面
+    def __init__(self):
+        super(myKnifeAndPeifang,self).__init__()
+        self.setupUi(self)
+        # self.pushButton_4.clicked.connect(self.savePeifang)
+        # self.pushButton_4.clicked.connect(self.openFlie)
+        self.pushButton_17.clicked.connect(self.OpenKnifeFile)
+        # self.pushButton_3.clicked.connect(self.alarmMeter)
+        self.pushButton_5.clicked.connect(lambda:self.meterClickedButton(self.spinBox_2.value()))
+        self.pushButton_6.clicked.connect(lambda:self.meterClickedButton(self.spinBox_3.value()))
+        self.pushButton_7.clicked.connect(lambda:self.meterClickedButton(self.spinBox_4.value()))
+        self.pushButton_8.clicked.connect(lambda:self.meterClickedButton(self.spinBox_5.value()))
+        self.pushButton_9.clicked.connect(lambda:self.meterClickedButton(self.spinBox_6.value()))
+        self.pushButton_10.clicked.connect(lambda:self.meterClickedButton(self.spinBox_7.value()))
+        self.pushButton_11.clicked.connect(lambda:self.meterClickedButton(self.spinBox_8.value()))
+        self.pushButton_12.clicked.connect(lambda:self.meterClickedButton(self.spinBox_9.value()))
+        self.pushButton_13.clicked.connect(lambda:self.meterClickedButton(self.spinBox_10.value()))
+        self.pushButton_14.clicked.connect(lambda:self.meterClickedButton(self.spinBox_11.value()))
+        self.pushButton_15.clicked.connect(lambda:self.meterClickedButton(self.spinBox_12.value()))
+        self.pushButton_16.clicked.connect(lambda:self.meterClickedButton(self.spinBox_13.value()))
+        self.fileFlag = 0
+        self.daoNum = [self.spinBox_2,self.spinBox_3,self.spinBox_4,self.spinBox_5,self.spinBox_6,\
+            self.spinBox_7,self.spinBox_8,self.spinBox_9,self.spinBox_10,self.spinBox_11,self.spinBox_12,self.spinBox_13]
+        self.doubleSpinBoxNum = [self.doubleSpinBox,self.doubleSpinBox_2,self.doubleSpinBox_3,self.doubleSpinBox_4,self.doubleSpinBox_5,self.doubleSpinBox_6,\
+            self.doubleSpinBox_7,self.doubleSpinBox_8,self.doubleSpinBox_9,self.doubleSpinBox_10,self.doubleSpinBox_11,self.doubleSpinBox_12]
+        # for k in range(12):
+        #     self.daoNum[k].editingFinished.connect(self.D1)
+        daoFile = pd.read_csv(knifePath,encoding='GBk',index_col=0)
+        for i in range(12):
+            self.daoNum[i].setValue(i+1)
+            self.doubleSpinBoxNum[i].setValue(daoFile.loc[i+1,'运行米长'])
+        self.alarmMeter()
+
+
+    def OpenKnifeFile(self): #打开文件
+        try:
+            os.rename(knifePath,knifePath)
+            os.startfile(knifePath)
+        except:
+            msgBox = QMessageBox(QMessageBox.Warning,'提示','文件已打开')
+            msgBox.exec_()
+    def D1(self):
+        daoFile = pd.read_csv(knifePath,encoding='GBk',index_col=0)
+        for i in range(12):
+            self.daoNum[i].setValue(i+1)
+            self.doubleSpinBoxNum[i].setValue(daoFile.loc[i+1,'运行米长'])
+
+    def alarmMeter(self):
+        alarmlist = 'alarmNo.'
+        for i in range(12):
+            if self.doubleSpinBoxNum[i].value()>3:
+              alarmlist = alarmlist+'/'+str(self.daoNum[i].value())
+        self.textEdit.setPlainText(alarmlist)
+    def meterClickedButton(self,daoNum):
+        daoData = pd.read_csv(knifePath,encoding='GBK',index_col=0)
+        daoData.loc[daoNum,'运行米长'] = 0
+        daoData.to_csv(knifePath,encoding='GBK',index=True,header=True)
+        self.D1() 
+
+
+class peiFang(QtWidgets.QWidget,Ui_Form1):  #配方编辑
+    def __init__(self):
+        super(peiFang,self).__init__()
+        self.setupUi(self)
+        self.pushButton_4.clicked.connect(self.peiFangNow)
+        self.pushButton.clicked.connect(savePeifang)
+        self.pushButton_5.clicked.connect(self.openPeiFangFlie)
+        self.spinBox.editingFinished.connect(self.selectPeiFang)
+        self.pushButton_2.clicked.connect(self.modifyPeifang)
+        self.peifangApplication.editingFinished.connect(self.peifangApp)   #选择配方应用
+        self.pushButton_6.clicked.connect(self.applicationBtn)   #点击应用
+        self.spinBox.setRange(0,200)
+        self.textEditName = [self.textEdit,self.textEdit_2,self.textEdit_3,self.textEdit_4,self.textEdit_5,self.textEdit_6,self.textEdit_7,self.textEdit_8,\
+            self.textEdit_9,self.textEdit_10,self.textEdit_11,self.textEdit_12,self.textEdit_13,self.textEdit_14,self.textEdit_15,self.textEdit_16,self.textEdit_17,\
+                self.textEdit_18,self.textEdit_19,self.textEdit_20,self.textEdit_21]
+        self.NowValue = [api.SpeedLmitHigh,api.xintong_widthDown,api.fangjuanFSetDown,api.lengthSet,api.Mo_WidthDown,\
+                api.Mo_thickDown,api.Meters_Stop,api.speedJog,api.xintongSizeUp,api.tongkuanUp,\
+                    api.circlesUp,api.shoujuanFSetUp,api.zhuiduUp,api.xintongSizeDown,api.tongkuanDown,\
+                        api.circlesDown,api.shoujuanFSetDown,api.zhuiduDown,api.Accelerate_time,api.Slow_time,\
+                            api.Stop_time]
+    def peiFangNow(self):
+        self.label_46.setText('当前运行配方')
+        # self.label_46.styleSheet("color:#00ff00")
+        self.label_46.setStyleSheet("color:blue;border:1px solid blue")
+        for i in range(len(self.textEditName)):
+            self.textEditName[i].setPlainText(str(self.NowValue[i]))
+
+    def peifangApp(self):
+        NumPeiFang = peiFangWin.peifangApplication.value()
+        self.label_46.setText('请检查将要应用的配方是否正确')
+        self.label_46.setStyleSheet('color:#ff0000;border:1px solid #ff0000')
+        NumRead = list(readCsv().loc[NumPeiFang])
+        for k in range(21):
+            self.textEditName[k].setPlainText(str(NumRead[k]))
+    # def modifiyPeiFang(self):
+    #     NumPeiFang = self.spinBox.value()
+    #     peifang = pd.read_csv('')
+
+    def applicationBtn(self):
+        NumPeiFang = peiFangWin.peifangApplication.value()
+        NumRead = list(readCsv().loc[NumPeiFang])
+        # print(NumRead)
+        # for k in range(21):
+        #     WriteValue[k] = NumRead[k]
+        api.SpeedLmitHigh = NumRead[0]
+        api.xintong_widthDown= NumRead[1]
+        api.fangjuanFSetDown= NumRead[2]
+        api.lengthSet= NumRead[3]
+        api.Mo_WidthDown= NumRead[4]
+        api.Mo_thickDown= NumRead[5]
+        api.Meters_Stop= NumRead[6]
+        api.speedJog= NumRead[7]
+        api.xintongSizeUp= NumRead[8]
+        api.tongkuanUp= NumRead[9]
+        api.circlesUp= NumRead[10]
+        api.shoujuanFSetUp= NumRead[11]
+        api.zhuiduUp= NumRead[12]
+        api.xintongSizeDown= NumRead[13]
+        api.tongkuanDown= NumRead[14]
+        api.circlesDown= NumRead[15]
+        api.shoujuanFSetDown= NumRead[16]
+        api.zhuiduDown= NumRead[17]
+        api.Accelerate_time= NumRead[18]
+        api.Slow_time= NumRead[19]
+        api.Stop_time= NumRead[20]
+        send_data_to_PLC()
+        msgBox = QMessageBox(QMessageBox.Warning,'提示','配方应用成功')
+        msgBox.exec_()
+            # print(len(NumRead),NumRead[k])
+
+    def selectPeiFang(self):
+        self.spinBox_2.setRange(0,200) #速度限定
+        self.spinBox_3.setRange(0,1000) #芯筒宽度
+        self.spinBox_4.setRange(0,200)  #张力设定
+        self.spinBox_5.setRange(0,1000) #膜宽
+        self.spinBox_6.setRange(0,300)  #膜厚
+        self.spinBox_7.setRange(0,8000) #预设长度
+        self.spinBox_8.setRange(0,100)  #点动停机米数(m)
+        self.spinBox_9.setRange(0,100)  #点动停机速度(m/min)
+        self.spinBox_10.setRange(0,10)  #上收卷芯筒尺寸
+        self.spinBox_11.setRange(0,500) #上收卷芯筒宽度
+        self.spinBox_12.setRange(0,100) #上滑差环数
+        self.spinBox_13.setRange(0,200) #收卷上张力
+        self.spinBox_14.setRange(0,100) #上锥度
+        self.spinBox_15.setRange(0,10)  #下收卷芯筒尺寸
+        self.spinBox_16.setRange(0,500) #下收卷芯筒宽度
+        self.spinBox_17.setRange(0,100) #下滑差环数
+        self.spinBox_18.setRange(0,200) #收卷下张力
+        self.spinBox_19.setRange(0,10)  #下锥度
+        self.spinBox_20.setRange(0,100) #升速时间
+        self.spinBox_21.setRange(0,100) #降速时间
+        self.spinBox_22.setRange(0,100) #停止时间
+        peifangSpinBox = [self.spinBox_2,self.spinBox_3,self.spinBox_4,self.spinBox_7,self.spinBox_5,self.spinBox_6,self.spinBox_8,\
+            self.spinBox_9,self.spinBox_10,self.spinBox_11,self.spinBox_12,self.spinBox_13,self.spinBox_14,self.spinBox_15,self.spinBox_16,self.spinBox_17,\
+                self.spinBox_18,self.spinBox_19,self.spinBox_20,self.spinBox_21,self.spinBox_22]
+        NumPeiFang = peiFangWin.spinBox.value()
+        NumRead = list(readCsv().loc[NumPeiFang])
+        for k in range(21):
+            peifangSpinBox[k].setValue(NumRead[k])
+        # csvfile.loc[NumPeiFang,str(indexName[k])]=setPeiFangValue[k]
+    def modifyPeifang(self):
+        indexName = ['速度限定','芯筒宽度','张力设定','预设长度','膜宽','膜厚','点动停机米数','点动停机速度',\
+            '上收芯筒尺寸','上筒宽','SJ上滑差环数','SJ上张力','上锥度',\
+                '下收芯筒尺寸','下筒宽','下滑差环数','下张力','下锥度','加速时间','减速时间','停止时间']
+        peifangSpinBox = [self.spinBox_2,self.spinBox_3,self.spinBox_4,self.spinBox_7,self.spinBox_5,self.spinBox_6,self.spinBox_8,\
+            self.spinBox_9,self.spinBox_10,self.spinBox_11,self.spinBox_12,self.spinBox_13,self.spinBox_14,self.spinBox_15,self.spinBox_16,self.spinBox_17,\
+                self.spinBox_18,self.spinBox_19,self.spinBox_20,self.spinBox_21,self.spinBox_22]
+        NumPeiFang = peiFangWin.spinBox.value()
+        modifiedPeiFang = readCsv()
+        for k in range(21):
+           modifiedPeiFang.loc[NumPeiFang,str(indexName[k])] = peifangSpinBox[k].value()
+        try:   
+            modifiedPeiFang.to_csv(peifangPath,encoding='GBK',index=True,header=True)
+            msgBox = QMessageBox(QMessageBox.Warning,'配方修改提示','配方修改成功')
+            msgBox.exec_()
+        except:
+            msgBox = QMessageBox(QMessageBox.Warning,'Warning','文件被占用，请先关闭文件')
+            msgBox.exec_()
+    def openPeiFangFlie(self):
+        if os.path.exists(peifangPath):
+            try:
+                os.rename(peifangPath,peifangPath)
+                os.startfile(peifangPath)
+                # self.pushButton_4.setStyleSheet("background-color: #00ff00")
+            except:
+                msgBox = QMessageBox(QMessageBox.Warning,'Warning','文件已被打开')
+                # self.pushButton_4.setStyleSheet("background-color: #ffffff")
+                msgBox.exec_()
+                print('wnejianzhanyong')
+            # if os.rename(peifangPath,peifangPath):
+            #      self.pushButton_4.setStyleSheet("background-color: #ffffff")
+        else:
+            msgBox = QMessageBox(QMessageBox.Warning,'Warning','文件不存在')
+            # self.pushButton_4.setStyleSheet("background-color: #ffffff")
+            msgBox.exec_()
+            print('文件不存在')    
+def readCsv():
+    indexCsv = pd.read_csv(peifangPath,encoding='GBK',index_col=0)
+    return indexCsv
+
+def savePeifang():  #配方保存
+    # try:
+    #     os.rename(peifangPath,peifangPath)
+        if os.path.exists(peifangPath):
+            try:
+                os.rename(peifangPath,peifangPath)
+                # indexCount = pd.read_csv(peifangPath,encoding='GBK',index_col=0)
+
+                indexCount = readCsv()
+                PdPF = pd.DataFrame([{"配方号":len(indexCount.index.values)+1,"速度限定":api.SpeedLmitHigh,"芯筒宽度":api.xintong_widthDown,"张力设定":api.fangjuanFSetDown,"预设长度":api.lengthSet,\
+                    "膜宽":api.Mo_WidthDown,"膜厚":api.Mo_thickDown,"点动停机米数":api.Meters_Stop,"点动停机速度":api.speedJog,\
+                    "上收芯筒尺寸":api.xintongSizeUp,"上筒宽":api.tongkuanUp,"SJ上滑差环数":api.circlesUp,"SJ上张力":api.shoujuanFSetUp,"上锥度":api.zhuiduUp,\
+                        "下收芯筒尺寸":api.xintongSizeDown,"下筒宽":api.tongkuanDown,"下滑差环数":api.circlesDown,"下张力":api.shoujuanFSetDown,"下锥度":api.zhuiduDown,\
+                            "加速时间":api.Accelerate_time,"减速时间":api.Slow_time,"停止时间":api.Stop_time}])
+                PdPF.to_csv(peifangPath,encoding='GBK',mode='a',index=False,header=False)
+                msgBox = QMessageBox(QMessageBox.Warning,'Noting','配方记录成功')
+                msgBox.exec_()
+            except:
+                print("文件被占用，请先关闭文件")
+                msgBox = QMessageBox(QMessageBox.Warning,'Warning','文件被占用，请先关闭文件')
+                msgBox.exec_()
+        else:
+            PdPF = pd.DataFrame([{"配方号":1,"速度限定":api.SpeedLmitHigh,"芯筒宽度":api.xintong_widthDown,"张力设定":api.fangjuanFSetDown,"预设长度":api.lengthSet,\
+                "膜宽":api.Mo_WidthDown,"膜厚":api.Mo_thickDown,"点动停机米数":api.Meters_Stop,"点动停机速度":api.speedJog,\
+                    "上收芯筒尺寸":api.xintongSizeUp,"上筒宽":api.tongkuanUp,"SJ上滑差环数":api.circlesUp,"SJ上张力":api.shoujuanFSetUp,"上锥度":api.zhuiduUp,\
+                        "下收芯筒尺寸":api.xintongSizeDown,"下筒宽":api.tongkuanDown,"下滑差环数":api.circlesDown,"下张力":api.shoujuanFSetDown,"下锥度":api.zhuiduDown,\
+                            "加速时间":api.Accelerate_time,"减速时间":api.Slow_time,"停止时间":api.Stop_time}])
+            PdPF.to_csv(peifangPath,encoding='GBK',mode='a',index=False,header=True)
+            msgBox = QMessageBox(QMessageBox.Warning,'Noting','配方记录成功')
+            msgBox.exec_()
+
+
+class flawDealPopup(QtWidgets.QMainWindow,Ui_DefectProcess):  #缺陷处理弹窗
+    def __init__(self):
+        super(flawDealPopup,self).__init__()
+        self.setupUi(self)
+        self.pushButton.pressed.connect(self.openFlawStop)
+        self.pushButton_2.pressed.connect(self.show_pic)
+        self.pushButton_3.pressed.connect(self.openFlawFile)
+        self.pushButton_4.pressed.connect(self.popDealDone)
+        self.radioButton.toggled.connect(lambda:self.chooseDealType(0))
+        self.radioButton_2.toggled.connect(lambda:self.chooseDealType(3))
+        self.radioButton_3.toggled.connect(lambda:self.chooseDealType(1))
+        self.radioButton_4.toggled.connect(lambda:self.chooseDealType(2))
+        self.radioButton_5.toggled.connect(lambda:self.chooseDealType(4))
+        self.radioButton_6.toggled.connect(lambda:self.chooseDealType(5))
+        self.spinBox.setRange(0,100000000)
+        self.doubleSpinBox.setRange(0,100000000)
+        self.doubleSpinBox_3.setRange(0,100000000)
+        self.doubleSpinBox_2.setRange(0,100000000)
+        self.spinBox.setValue(int(api.stopStack[-1][0]))
+        self.doubleSpinBox.setValue(float(api.stopStack[-1][1]))
+        self.doubleSpinBox_3.setValue(float(api.badMetersX[api.findPoint[api.stopStack[-1][0]]]))
+        self.doubleSpinBox_2.setValue(float(api.badMeters[api.findPoint[api.stopStack[-1][0]]]))
+        self.textEdit.setPlainText(api.stopTypeNames[api.stopStack[-1][2]])
+
+    def openFlawStop(self):         # 瑕疵停机选择
+        pass
+
+    def show_pic(self):              # 显示缺陷图片
+        imagePath0 = updateFlawFile(flawPicFolderPath) + '\\{0}.bmp'.format(str(api.badPics[api.badPoint]).zfill(6))
+        print('当前第',api.badPoint)
+        print('image path',imagePath0)
+        os.startfile(imagePath0)
+
+    def openFlawFile(self):         # 打开缺陷文件
+        flawFilePath = updateFlawFile(flawFileFolderPath) + '\\ErrorData.csv'
+        os.startfile(flawFilePath)
+    
+    def popDealDone(self):
+        api.dealDoneFlag = 1
+    
+    def chooseDealType(self,a):
+        api.dealtype = a
+        dealTypeNames = ['不处理','确认','裁剪','双面贴胶','表面贴胶','里面贴胶']
+        print('缺陷编号：{}，处理方式：{}'.format(api.stopStack[-1][0],dealTypeNames[a]))
+
+
+class shoujuanGongwei(QtWidgets.QMainWindow,Ui_ShouJuan):  #收卷工位设置
+    def __init__(self):
+        super(shoujuanGongwei,self).__init__()
+        self.setupUi(self)
+        self.pushButton.clicked.connect(self.confirm)
+        self.pushButton_2.clicked.connect(self.cancel)
+        self.pushButton_3.clicked.connect(self.clearAll)
+        self.radioButton.toggled.connect(self.upDownChange)
+        self.radioButton_2.toggled.connect(self.upDownChange)
+
+        self.dsbNames = [self.doubleSpinBox_16,self.doubleSpinBox,self.doubleSpinBox_2,self.doubleSpinBox_3,self.doubleSpinBox_4,\
+            self.doubleSpinBox_5,self.doubleSpinBox_6,self.doubleSpinBox_7,self.doubleSpinBox_8,
+            self.doubleSpinBox_9,self.doubleSpinBox_10,self.doubleSpinBox_11,self.doubleSpinBox_12,
+            self.doubleSpinBox_13,self.doubleSpinBox_14,self.doubleSpinBox_15,
+            self.doubleSpinBox_19,self.doubleSpinBox_20,self.doubleSpinBox_27,self.doubleSpinBox_21,
+            self.doubleSpinBox_26,self.doubleSpinBox_24,self.doubleSpinBox_32,self.doubleSpinBox_22,
+            self.doubleSpinBox_29,self.doubleSpinBox_23,self.doubleSpinBox_18,self.doubleSpinBox_17,
+            self.doubleSpinBox_28,self.doubleSpinBox_25,self.doubleSpinBox_31,self.doubleSpinBox_30]
+        for item in self.dsbNames:
+            item.setRange(0,10000)
+            # self.pushButton_3.clicked.connect(item.clear)
+
+        self.saverPath = readPath + '\\gongweiSet.csv'
+        if os.path.exists(self.saverPath):
+            parameters = []
+            f = open(self.saverPath,'r',newline='')
+            reader = csv.reader(f)
+            # print('length',len(reader))
+            for i in reader:
+                parameters.append(float(i[0]))
+            f.close()
+            for i in range(len(self.dsbNames)):
+                self.dsbNames[i].setValue(parameters[i])
+            if parameters[-1] == 0:
+                self.radioButton.setChecked(True)
+                self.radioButton_2.setChecked(False)
+            elif parameters[-1] == 1:
+                self.radioButton.setChecked(False)
+                self.radioButton_2.setChecked(True)
+
+    def clearAll(self):         #页面清零
+        for i in self.dsbNames:
+            i.setValue(0)
+
+    def upDownChange(self):     #1工位上下收卷
+        if self.sender() == self.radioButton:
+            api.firstUpOrDown = 0
+            print('1工位上收卷')
+        elif self.sender() == self.radioButton_2:
+            api.firstUpOrDown = 1
+            print('1工位下收卷')
+
+    def confirm(self):          #确认
+        api.shoujuanWidths=[self.doubleSpinBox_16.value(),self.doubleSpinBox.value(),self.doubleSpinBox_2.value(),self.doubleSpinBox_3.value(),self.doubleSpinBox_4.value(),\
+                            self.doubleSpinBox_5.value(),self.doubleSpinBox_6.value(),self.doubleSpinBox_7.value(),self.doubleSpinBox_8.value(),
+                            self.doubleSpinBox_9.value(),self.doubleSpinBox_10.value(),self.doubleSpinBox_11.value(),self.doubleSpinBox_12.value(),
+                            self.doubleSpinBox_13.value(),self.doubleSpinBox_14.value(),self.doubleSpinBox_15.value(),
+                            self.doubleSpinBox_19.value(),self.doubleSpinBox_20.value(),self.doubleSpinBox_27.value(),self.doubleSpinBox_21.value(),
+                            self.doubleSpinBox_26.value(),self.doubleSpinBox_24.value(),self.doubleSpinBox_32.value(),self.doubleSpinBox_22.value(),
+                            self.doubleSpinBox_29.value(),self.doubleSpinBox_23.value(),self.doubleSpinBox_18.value(),self.doubleSpinBox_17.value(),
+                            self.doubleSpinBox_28.value(),self.doubleSpinBox_25.value(),self.doubleSpinBox_31.value(),self.doubleSpinBox_30.value()]
+                            # 左边料doubleSpinBox_16，右边料doubleSpinBox_30
+        
+        api.shoujuanBorders=[0]#建立区间列表
+        self.saver = []
+        total = 0              #d对输入列表求和
+        for i in range(len(api.shoujuanWidths)):     #通过求和生成区间列表
+            self.saver.append([api.shoujuanWidths[i]])
+            if api.shoujuanWidths[i] != 0:
+                total+=api.shoujuanWidths[i]
+                api.shoujuanBorders.append(total)
+        # print('边界：',api.shoujuanBorders)
+        # for i in range(len(api.shoujuanBorders)-1):
+        #     if (api.shoujuanBorders[i]<=500) & (500<api.shoujuanBorders[i+1]):
+        #         print('gongwei num',i,abs((api.firstUpOrDown - (1 - i%2))))
+        # x=int(input('请输入x坐标值：'))
+        if self.radioButton.isChecked():
+            api.firstUpOrDown = 0
+        elif self.radioButton_2.isChecked():
+            api.firstUpOrDown = 1
+        else:
+            pass
+        f = open(readPath + '\\gongweiSet.csv','w',newline='')
+        csv.writer(f).writerows(self.saver)
+        csv.writer(f).writerow([api.firstUpOrDown])
+        f.close()
+        mainWin.shoujuanSetWin.close()
+    
+    def cancel(self):           #取消
+        mainWin.shoujuanSetWin.close()
+
+def findGongWeiNum(x):          #根据缺陷x坐标找到它在收卷的第几工位
+    if len(api.shoujuanBorders) <= 1:
+        return api.firstUpOrDown
+    else:
+        if x < api.shoujuanBorders[1]:      #x小于左边料边界，认为在左边料
+            return -1
+        elif x >= api.shoujuanBorders[-2]:  #x超过右边料边界，认为在右边料
+            return -1
+        for i in range(1,len(api.shoujuanBorders)-2):
+            if (api.shoujuanBorders[i]<=x) & (x<api.shoujuanBorders[i+1]):
+                if api.shoujuanWidths[0] > 0:       #有左边料
+                    if api.shoujuanWidths[-1] > 0:
+                        return i
+                elif api.shoujuanWidths[0] == 0:
+                    return i+1
+
+
+class readPLCThread (threading.Thread):    #连续读取PLC数据
+    def __init__(self, threadID, name, stopflag):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+        self.name = name
+        self.stop = stopflag
+
+    def close(self):
+        self.stop = 1
+
+    def run(self):
+        while True:
+            #输出继电器
+            # global last_qizhang
+            # global last_flawStop
+            # global now_qizhang
+            # last_qizhang = api.QXlist[15]
+            # last_flawStop = api.MXlist[5][2]
+            try:
+                api.QXlist = client.read_coils(0,50).bits
+                yadaiUD = client.read_coils(1053,2).bits
+            except Exception as e:
+                print(e)
+                api.QXlist = [0]*50
+                yadaiUD = [0,0]
+
+            # print ('yadaiUD',yadaiUD)
+            for i in range(len(api.QXlist)):
+                api.QXlist[i] = int(api.QXlist[i])
+            api.QXlist += [int(yadaiUD[0]),int(yadaiUD[1])]
+            # print('qxlist:',api.QXlist)
+            
+            # now_qizhang = api.QXlist[15]
+            
+            # #MX寄存器
+            # request0 = client.read_holding_registers(0,10).registers
+            # api.MXlist[0] = dec_to_binlist(request0[0],16)
+            # api.MXlist[1] = dec_to_binlist(request0[1],16)
+            # api.MXlist[2] = dec_to_binlist(request0[2],16)
+            # api.MXlist[3] = dec_to_binlist(request0[3],16)
+            # api.MXlist[4] = dec_to_binlist(request0[4],16)
+            # api.MXlist[5] = dec_to_binlist(request0[9],16)
+            # # print('mxlist:',api.MXlist)
+            # global now_flawStop
+            # now_flawStop = api.MXlist[5][2]
+            try:
+                    #MX寄存器
+                request0 = client.read_holding_registers(0,10).registers
+                api.MXlist[0] = dec_to_binlist(request0[0],16)
+                api.MXlist[1] = dec_to_binlist(request0[1],16)
+                api.MXlist[2] = dec_to_binlist(request0[2],16)
+                api.MXlist[3] = dec_to_binlist(request0[3],16)
+                api.MXlist[4] = dec_to_binlist(request0[4],16)
+                api.MXlist[5] = dec_to_binlist(request0[9],16)
+                # print('mxlist:',api.MXlist)
+                # global now_flawStop
+                # now_flawStop = api.MXlist[5][2]
+                result1 = client.read_holding_registers(10,54).registers
+                result2 = client.read_holding_registers(98,18).registers
+                result3 = client.read_holding_registers(416,8).registers
+                result4 = client.read_holding_registers(444,8).registers
+                result5 = client.read_holding_registers(132,10).registers
+                result6 = client.read_holding_registers(188,10).registers
+                result7 = client.read_holding_registers(470,2).registers
+            except Exception as e:
+                print(e)
+                time.sleep(1) 
+                # continue
+            # print('result1',result1)
+
+            # real型变量
+            api.speedNow = api.speedNow if (dec_to_float(result1[0],result1[1]) == None) else dec_to_float(result1[0],result1[1])
+            api.lengthAct = api.lengthAct if (dec_to_float(result1[2],result1[3]) == None) else dec_to_float(result1[2],result1[3])
+            api.LengthSum = api.LengthSum if (dec_to_float(result1[4],result1[5]) == None) else dec_to_float(result1[4],result1[5])
+            api.houshoujuanR = api.houshoujuanR if (dec_to_float(result1[6],result1[7]) == None) else dec_to_float(result1[6],result1[7])
+            api.QianshoujuanR = api.QianshoujuanR if (dec_to_float(result1[8],result1[9]) == None) else dec_to_float(result1[8],result1[9])
+            api.fangjuanActFUp = api.fangjuanActFUp if (dec_to_float(result1[10],result1[11]) == None) else dec_to_float(result1[10],result1[11])
+            api.fangjuanRUp = api.fangjuanRUp if (dec_to_float(result1[12],result1[13]) == None) else dec_to_float(result1[12],result1[13])
+            api.fangjuanActFDown = api.fangjuanActFDown if (dec_to_float(result1[14],result1[15]) == None) else dec_to_float(result1[14],result1[15])
+            api.fangjuanRDown = api.fangjuanRDown if (dec_to_float(result1[16],result1[17]) == None) else dec_to_float(result1[16],result1[17])
+            api.SpeedLmitHigh = api.SpeedLmitHigh if (dec_to_float(result1[18],result1[19]) == None) else dec_to_float(result1[18],result1[19])
+            api.SpeedLmitLow = api.SpeedLmitLow if (dec_to_float(result1[20],result1[21]) == None) else dec_to_float(result1[20],result1[21])
+            api.lengthSet = api.lengthSet if (dec_to_float(result1[22],result1[23]) == None) else dec_to_float(result1[22],result1[23])
+            api.xintong_widthUp = api.xintong_widthUp if (dec_to_float(result1[24],result1[25]) == None) else dec_to_float(result1[24],result1[25])
+            api.fangjuanFSetUp = api.fangjuanFSetUp if (dec_to_float(result1[26],result1[27]) == None) else dec_to_float(result1[26],result1[27])
+            api.Mo_WidthUp = api.Mo_WidthUp if (dec_to_float(result1[28],result1[29]) == None) else dec_to_float(result1[28],result1[29])
+            api.Mo_thickUp = api.Mo_thickUp if (dec_to_float(result1[30],result1[31]) == None) else dec_to_float(result1[30],result1[31])
+            api.xintongTypeUp = api.xintongTypeUp if (dec_to_float(result1[32],result1[33]) == None) else dec_to_float(result1[32],result1[33])
+            api.moTypeUp = api.moTypeUp if (dec_to_float(result1[34],result1[35]) == None) else dec_to_float(result1[34],result1[35])
+            api.xintong_widthDown = api.xintong_widthDown if (dec_to_float(result1[36],result1[37]) == None) else dec_to_float(result1[36],result1[37])
+            api.fangjuanFSetDown = api.fangjuanFSetDown if(dec_to_float(result1[38],result1[39]) == None) else dec_to_float(result1[38],result1[39])
+            api.Mo_WidthDown = api.Mo_WidthDown if(dec_to_float(result1[40],result1[41]) == None) else dec_to_float(result1[40],result1[41])
+            api.Mo_thickDown = api.Mo_thickDown if(dec_to_float(result1[42],result1[43]) == None) else dec_to_float(result1[42],result1[43])
+            api.xintongTypeDown = api.xintongTypeDown if(dec_to_float(result1[44],result1[45]) == None) else dec_to_float(result1[44],result1[45])
+            api.moTypeDown = api.moTypeDown if(dec_to_float(result1[46],result1[47]) == None) else dec_to_float(result1[46],result1[47])
+            api.Accelerate_time = api.Accelerate_time if (dec_to_float(result1[48],result1[49]) == None) else dec_to_float(result1[48],result1[49])
+            api.Slow_time = api.Slow_time if (dec_to_float(result1[50],result1[51]) == None) else dec_to_float(result1[50],result1[51])
+            api.Stop_time = api.Stop_time if (dec_to_float(result1[52],result1[53]) == None) else dec_to_float(result1[52],result1[53])
+
+            api.xintongSizeUp = api.xintongSizeUp if (dec_to_float(result2[0],result2[1]) == None) else dec_to_float(result2[0],result2[1])
+            api.xintongSizeDown = api.xintongSizeDown if (dec_to_float(result2[2],result2[3]) == None) else dec_to_float(result2[2],result2[3])
+            api.didaoDingWei = api.didaoDingWei if (dec_to_float(result2[4],result2[5]) == None) else dec_to_float(result2[4],result2[5])
+            api.Meters_Stop = api.Meters_Stop if (dec_to_float(result2[6],result2[7]) == None) else dec_to_float(result2[6],result2[7])
+            api.yagunBackUp = api.yagunBackUp if (dec_to_float(result2[8],result2[9]) == None) else dec_to_float(result2[8],result2[9])
+            api.yagunBackDown = api.yagunBackDown if (dec_to_float(result2[10],result2[11]) == None) else dec_to_float(result2[10],result2[11])
+            api.speedJog = api.speedJog if (dec_to_float(result2[12],result2[13]) == None) else dec_to_float(result2[12],result2[13])
+            api.offsetFront = api.offsetFront if (dec_to_float(result2[14],result2[15]) == None) else dec_to_float(result2[14],result2[15])
+            api.offsetBack = api.offsetBack if (dec_to_float(result2[16],result2[17]) == None) else dec_to_float(result2[16],result2[17])
+
+            api.fangjuanSpeedRatio = api.fangjuanSpeedRatio if (dec_to_float(result5[0],result5[1]) == None) else dec_to_float(result5[0],result5[1])
+            api.alarmR = api.alarmR if (dec_to_float(result5[4],result5[5]) == None) else dec_to_float(result5[4],result5[5])
+            api.tongkuanDown = api.tongkuanDown if (dec_to_float(result5[6],result5[7]) == None) else dec_to_float(result5[6],result5[7])
+            api.tongkuanUp = api.tongkuanUp if (dec_to_float(result5[8],result5[9]) == None) else dec_to_float(result5[8],result5[9])
+
+            api.shoujuanFSetUp = api.shoujuanFSetUp if (dec_to_float(result3[0],result3[1]) == None) else dec_to_float(result3[0],result3[1])
+            api.shoujuanFSetDown = api.shoujuanFSetDown if (dec_to_float(result3[2],result3[3]) == None) else dec_to_float(result3[2],result3[3])
+            api.zhuiduUp = api.zhuiduUp if (dec_to_float(result3[4],result1[5]) == None) else dec_to_float(result3[4],result3[5])
+            api.zhuiduDown = api.zhuiduDown if (dec_to_float(result3[6],result3[7]) == None) else dec_to_float(result3[6],result3[7])
+
+            api.targetUp = api.targetUp if (dec_to_float(result4[0],result4[1]) == None) else dec_to_float(result4[0],result4[1])
+            api.targetDown = api.targetDown if (dec_to_float(result4[2],result4[3]) == None) else dec_to_float(result4[2],result4[3])
+            api.circlesUp = api.circlesUp if (dec_to_float(result4[4],result1[5]) == None) else dec_to_float(result4[4],result4[5])
+            api.circlesDown = api.circlesDown if (dec_to_float(result4[6],result4[7]) == None) else dec_to_float(result4[6],result4[7])
+
+            api.flawPoint = api.flawPoint if (dec_to_float(result6[0],result6[1]) == None) else dec_to_float(result6[0],result6[1])
+            api.flawPoint = int(api.flawPoint)
+            api.Amount_LeftFlaw = api.Amount_LeftFlaw if (dec_to_float(result6[2],result6[3]) == None) else dec_to_float(result6[2],result6[3])
+            api.Meters_NextFlaw = api.Meters_NextFlaw if (dec_to_float(result6[4],result6[5]) == None) else dec_to_float(result6[4],result6[5])
+            api.jiedaijinchi = api.jiedaijinchi if (dec_to_float(result6[8],result6[9]) == None) else dec_to_float(result6[8],result6[9])
+
+            api.fangjuanL = api.fangjuanL if (dec_to_float(result7[0],result7[1]) == None) else dec_to_float(result7[0],result7[1])
+            
+
+            # result8 = client.read_holding_registers(600,2).registers
+            # testspeed = api.testspeed if (dec_to_float(result8[0],result8[1]) == None) else dec_to_float(result8[0],result8[1])
+            # print(testspeed)
+            if api.readPLCclose == 1:
+                break
+            time.sleep(0.02)
+
+
+class dataThread (threading.Thread):       #数据保存类
+    def __init__(self, threadID, name, stopflag):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+        self.name = name
+        self.stop = stopflag
+
+    def close(self):
+        self.stop = 1
+
+    def run(self):
+        print ("Starting " + self.name)
+        threading.Lock().acquire()
+        timeNow = str(datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+        # path = writePath + '\\OriginalData\\' + timeNow + 'OriDatasaved.csv' 
+        path2 = readPath + '\\Datasaved\\' + timeNow + 'Datasaved.csv'
+        # f = open(path,'a+',newline='')
+        f2 = open(path2,'a+',newline='')
+        # titles = ['Index', 'Time', 'SpeedHigh', 'SpeedLow', 'LenghHigh', 'LengthLow']
+        titles2 = ['Index', 'Time', 'SpeedLmitHigh', 'SpeedLmitLow', 'fangjuanFSetUp', 'fangjuanFSetDown', \
+                    'Speed', 'LengthAct', 'QianshoujuanR','houshoujuanR', 'fangjuanActFUp','fangjuanRUp','fangjuanActFDown','fangjuanRDown', \
+                    'Omega_Axis1_REAL','Position_Axis1_Act_REAL','Torque_Axis1_Act_REAL','Omega_Axis2_REAL','Position_Axis2_Act_REAL','Torque_Axis2_Act_REAL', \
+                    'Omega_Axis3_REAL','Position_Axis3_Act_REAL','Torque_Axis3_Act_REAL','Omega_Axis6_REAL','Position_Axis6_Act_REAL','Torque_Axis6_Act_REAL', \
+                    'Omega_Axis8_REAL','Position_Axis8_Act_REAL','Torque_Axis8_Act_REAL','buttonCollect']
+        # total = 0
+        total2 = 0
+        if os.path.getsize(path2) == 0:
+            csv.writer(f2).writerow(titles2)
+            total2 = 1
+        else:
+            total2 = len(open(path2).readlines())
+
+        while True:
+            # lines = []
+            lines2 = []
+            for i in range(50):
+                t = time.time()
+                t1 = datetime.datetime.now()
+                t1 = t1.strftime('%Y/%m/%d/%H:%M:%S')
+                t2 = str('%.3f'%(t-int(t)))
+                t3 = t1 + t2[1:5]
+
+                lines2.append([total2, t3, api.SpeedLmitHigh, api.SpeedLmitLow, api.fangjuanFSetUp, api.fangjuanFSetDown, \
+                                api.speedNow, api.lengthAct, api.QianshoujuanR,api.houshoujuanR,api.fangjuanActFUp, api.fangjuanRUp, api.fangjuanActFDown,api.fangjuanRDown, \
+                                api.Omega_Axis1_REAL, api.Position_Axis1_Act_REAL, api.Torque_Axis1_Act_REAL, api.Omega_Axis2_REAL, api.Position_Axis2_Act_REAL, api.Torque_Axis2_Act_REAL, \
+                                api.Omega_Axis3_REAL, api.Position_Axis3_Act_REAL, api.Torque_Axis3_Act_REAL, api.Omega_Axis6_REAL, api.Position_Axis6_Act_REAL, api.Torque_Axis6_Act_REAL, \
+                                api.Omega_Axis8_REAL, api.Position_Axis8_Act_REAL, api.Torque_Axis8_Act_REAL, api.buttonCollect])
+                # total += 1
+                total2 += 1
+                if api.dataclose == 1:
+                    break
+                time.sleep(0.02)
+            # csv.writer(f).writerows(lines)
+            csv.writer(f2).writerows(lines2)
+
+            if api.dataclose == 1:
+                break        
+        print ("Exiting " + self.name)
+        # f.close()
+        f2.close()
+
+
+class mainStateMachine(object):              # 主状态机
+    def on_enter_idle(self):
+        print('Python is on')
+        self.to_createAPI()
+    
+    def on_enter_createAPI(self):
+        global api
+        api = Api()
+        self.to_connectPLC()
+    
+    def on_enter_connectPLC(self):
+        global client
+        client = ModbusTcpClient('10.30.76.26')
+        print('正在与PLC建立连接...')
+        connection = client.connect()        
+        if connection:
+            self.to_readPLC()
+        else:
+            print('连接失败！请检查网线连接与PLC状态')
+            time.sleep(3)
+            self.to_connectPLC()
+    
+    def on_enter_readPLC(self):
+        thread2 = readPLCThread(2,'Thread2',0)
+        thread2.setDaemon(True)
+        thread2.start()
+        print('正在读取PLC数据...')
+        time.sleep(0.2)
+        self.to_connectCamera()
+    
+    def on_enter_connectCamera(self):
+        target_host = "10.30.76.27"
+        target_port = 8500
+        global client2
+        #建立socket对象
+        socket.setdefaulttimeout(10)
+        client2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #连接客户端
+        print('正在与相机建立连接...')
+        try:
+            client2.connect((target_host,target_port))
+            self.to_readCamera()
+        except Exception:
+            print('连接失败！请检查网线连接与相机状态')
+            time.sleep(3)
+            self.to_connectCamera()
+
+    def on_enter_readCamera(self):
+        thread3 = photoThread(3,'Thread3',0)
+        thread3.setDaemon(True)
+        thread3.start()
+        print('正在读取相机数据...')
+        time.sleep(0.2)
+        self.to_createWindows()
+    
+    def on_enter_createWindows(self):
+        global lineWin, knifeWin, peiFangWin, mainWin
+        makeDecision(updateFlawFile(flawFileFolderPath) + '\\ErrorData.csv')
+        app = QtWidgets.QApplication(sys.argv)
+        lineWin = MyGraphWindow()
+        mainWin = myMainWindow()
+        knifeWin = myKnifeAndPeifang()
+        peiFangWin = peiFang()
+        print('欢迎！')
+        # renewTargetsInStack()
+        mainWin.show()
+        sys.exit(app.exec_())
+
+
+if __name__=='__main__':
+    mainSM = mainStateMachine()
+    machine0 = LockedMachine(mainSM,
+                            states=['idle','createAPI','connectPLC','readPLC','connectCamera','readCamera','createWindows'],
+                            initial='idle')
+    mainSM.to_idle()
